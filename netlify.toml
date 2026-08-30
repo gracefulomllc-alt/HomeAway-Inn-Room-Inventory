@@ -1,9 +1,3 @@
 [build]
-  publish = "."
+  publish = "public"
   functions = "netlify/functions"
-
-[[redirects]]
-  from = "/api/sync"
-  to = "/.netlify/functions/sync"
-  status = 200
-  force = true
