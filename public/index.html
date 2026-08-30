@@ -93,6 +93,9 @@ body.inroom .wrap{padding-bottom:126px}
   display:flex;flex-direction:column;justify-content:space-between;
 }
 .tile:active{background:#f0efea}
+.tile.pressing{transform:scale(.96);opacity:.8;transition:transform .12s ease,opacity .12s ease}
+.tile.picked{outline:3px solid var(--needs);outline-offset:-1px;background:#fbeee9}
+.pickcount{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:8px}
 .tile.b-complete{border-left-color:var(--complete)}
 .tile.b-progress{border-left-color:var(--progress)}
 .tile.b-needs{border-left-color:var(--needs)}
@@ -451,7 +454,7 @@ function idbKeys(store){return new Promise((res,rej)=>{const q=tx(store,'readonl
 function idbAll(store){return new Promise((res,rej)=>{const q=tx(store,'readonly').getAll();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error)})}
 
 /* ---------------- state ---------------- */
-let state = {v:1, rev:0, property:'Home Away Inn', rooms:[], standard:{all:[],byType:{}}, stdSeeded:false, lastBackup:0};
+let state = {v:1, rev:0, property:'Home Away Inn', rooms:[], standard:{all:[],byType:{}}, stdSeeded:false, deleted:{}, lastBackup:0};
 let currentRoomId = null;
 let filter = 'all';
 let typeFilter = 'all';
@@ -595,6 +598,19 @@ function typeOptions(cur,blank){
   return `<option value="">${esc(blank)}</option>`+list.map(t=>`<option ${cur===t?'selected':''}>${esc(t)}</option>`).join('');
 }
 const candidates = ()=>state.rooms.filter(r=>r.upgradeTo);
+
+/* Deletions are remembered on this device, not just asked of the server.
+   Without this, a delete comes straight back on the next sync whenever the
+   server call failed, or another phone still holding the room pushes it up. */
+const DELETED_KEEP_DAYS=60;
+function normalizeDeleted(){
+  if(!state.deleted||typeof state.deleted!=='object'||Array.isArray(state.deleted)) state.deleted={};
+  const cut=Date.now()-DELETED_KEEP_DAYS*86400000;
+  Object.entries(state.deleted).forEach(([k,v])=>{ if(!Number.isFinite(v)||v<cut) delete state.deleted[k]; });
+  return state.deleted;
+}
+const isDeleted = id => !!normalizeDeleted()[id];
+function markDeleted(id){ normalizeDeleted()[id]=Date.now(); }
 
 /* --- room standard: the minimum every room is supposed to have --- */
 function normalizeStandard(){
@@ -923,7 +939,7 @@ function renderBoard(){
   el.innerHTML=list.map(r=>{
     const open=r.work.filter(w=>w.status!=='complete').length;
     const tc=todoCounts(r);
-    return `<button class="tile b-${r.status}" data-room="${r.id}">
+    return `<button class="tile b-${r.status}${picked.has(r.id)?' picked':''}" data-room="${r.id}">
 
       <div>
         <div class="num">${esc(r.number)}</div>
@@ -942,7 +958,8 @@ function renderBoard(){
 
   const shown=list.length, total=state.rooms.length;
   const fb=document.getElementById('filterBar');
-  if(total && shown<total){
+  if(renderPickBar()){ /* selection bar takes priority */ }
+  else if(total && shown<total){
     fb.innerHTML=`Showing <strong>${shown}</strong> of <strong>${total}</strong> rooms — a filter is on.
       <button class="btn sm" id="showAll" style="margin-left:8px">Show all ${total}</button>`;
     fb.classList.remove('hidden');
@@ -1261,7 +1278,7 @@ function showTodo(){
    The server holds one copy per room. On open we pull anything newer,
    merge it into what is here, then push anything of ours that is newer.
    Everything still works with sync switched off or unreachable. */
-const API='/api/sync';
+const API='/.netlify/functions/sync';
 let syncState={on:true,busy:false,last:0,err:'',rooms:0,photos:0};
 
 async function api(action,opts={}){
@@ -1282,6 +1299,11 @@ async function pushRoom(r){
     delete send.savedAt;
     const {status,data}=await api('room',{body:{room:send,baseRev:r.rev||0}});
     if(status===200){ r.rev=data.rev; return true; }
+    if(status===410 || (data && data.deleted)){
+      markDeleted(r.id);
+      state.rooms=state.rooms.filter(x=>x.id!==r.id);
+      return false;
+    }
     if(status===409 && data.room){
       const {room:merged}=mergeRooms(r,normalizeRoom(data.room));   // union, nothing lost
       merged.rev=data.room.rev;
@@ -1307,6 +1329,22 @@ async function syncNow(quiet){
     const {status,data}=await api('manifest');
     if(status!==200||!data.ok) throw new Error(data.error||'server not reachable');
 
+    /* Deletions from either side. Ours are retried until the server accepts
+       them, so a delete never silently undoes itself. */
+    const gone=new Set(data.deleted||[]);
+    Object.keys(normalizeDeleted()).forEach(id=>gone.add(id));
+    (data.deleted||[]).forEach(id=>markDeleted(id));
+    for(const id of Object.keys(state.deleted)){
+      if((data.rooms||{})[id]){                          // still on the server — ask again
+        try{ await api('room',{id,method:'DELETE'}); }catch(e){}
+      }
+    }
+    if(gone.size){
+      const before=state.rooms.length;
+      state.rooms=state.rooms.filter(r=>!gone.has(r.id));
+      pulled+=before-state.rooms.length;
+    }
+
     /* pull rooms that are new or newer than ours */
     for(const [id,info] of Object.entries(data.rooms||{})){
       const mine=state.rooms.find(x=>x.id===id);
@@ -1314,6 +1352,7 @@ async function syncNow(quiet){
       const got=await api('room',{id});
       if(got.status!==200||!got.data.room) continue;
       const theirs=normalizeRoom(got.data.room);
+      if(gone.has(id)) continue;
       if(!mine){ state.rooms.push(theirs); pulled++; }
       else{
         const {room:merged}=mergeRooms(mine,theirs);
@@ -1329,6 +1368,7 @@ async function syncNow(quiet){
 
     /* push ours that the server has not got, or that we changed since */
     for(const r of state.rooms){
+      if(gone.has(r.id)) continue;
       const info=(data.rooms||{})[r.id];
       if(!dirty.has(r.id) && info
          && (info.updated||0)>=(r.updated||0) && (info.rev||0)>=(r.rev||0)) continue;
@@ -1439,6 +1479,67 @@ function closeSheet(){
 }
 
 /* ---------------- add rooms ---------------- */
+/* ---------- room shortcuts and deletion ---------- */
+let pickMode=false;
+const picked=new Set();
+
+function sheetRoomActions(id){
+  const r=room(id); if(!r) return;
+  const t=roomTodos(r);
+  openSheet(`
+    <h3>Room ${esc(r.number)}</h3>
+    <p class="hint" style="margin-bottom:12px">${esc(r.type||'Not classified')} · ${r.inventory.length} items · ${r.photos.length} photos · ${t.length} outstanding</p>
+    <div class="btnrow">
+      <button class="btn primary full" data-openroom="${r.id}">Open room</button>
+      ${r.status!=='complete'?`<button class="btn full" data-quickcomplete="${r.id}">Mark complete</button>`:''}
+      <button class="btn full" data-pickmode="1">Select several rooms…</button>
+      <button class="btn danger full" data-killroom="${r.id}">Delete room ${esc(r.number)}</button>
+      <button class="btn full" data-close>Cancel</button>
+    </div>
+  `);
+}
+
+async function deleteRooms(ids){
+  const list=ids.map(id=>room(id)).filter(Boolean);
+  if(!list.length) return;
+  const photos=list.reduce((n,r)=>n+r.photos.length,0);
+  const work=list.reduce((n,r)=>n+r.inventory.length,0);
+  const names=list.map(r=>r.number).join(', ');
+  if(!confirm(`Delete ${list.length===1?'room '+names:list.length+' rooms ('+names+')'}?`
+    +(work||photos?`\n\nThis removes ${work} items and ${photos} photos.`:'')
+    +`\n\nIt is removed from every phone once they sync. Menu → Recover can undo it.`)) return;
+
+  deleteIntent=Date.now();
+  await snapshot('before delete');
+  for(const r of list){
+    for(const pid of r.photos){
+      await idbDel('photos',pid).catch(()=>{});
+      if(thumbURLs.has(pid)){ URL.revokeObjectURL(thumbURLs.get(pid)); thumbURLs.delete(pid); }
+    }
+    markDeleted(r.id);                                   // remembered here first
+    try{ await api('room',{id:r.id,method:'DELETE'}); }catch(e){}   // then asked of the server
+    state.rooms=state.rooms.filter(x=>x.id!==r.id);
+  }
+  picked.clear(); pickMode=false;
+  await writeState();
+  clearFilters(); showBoard();
+  toast(`${list.length} room${list.length===1?'':'s'} deleted`);
+}
+
+function togglePick(id){
+  if(picked.has(id)) picked.delete(id); else picked.add(id);
+  renderBoard();
+}
+function renderPickBar(){
+  const bar=document.getElementById('filterBar');
+  if(!pickMode) return false;
+  bar.innerHTML=`Tap rooms to select. <strong>${picked.size}</strong> selected.
+    <button class="btn sm danger" id="killPicked" style="margin-left:8px">Delete selected</button>
+    <button class="btn sm" id="cancelPick" style="margin-left:6px">Cancel</button>`;
+  bar.classList.remove('hidden');
+  return true;
+}
+
 function sheetAddRooms(){
   openSheet(`
     <h3>Add rooms</h3>
@@ -2170,10 +2271,31 @@ document.addEventListener('click', async e=>{
   const f=t.closest('[data-filter]');
   if(f){ filter=f.dataset.filter; renderBoard(); return; }
   const tile=t.closest('[data-room]');
-  if(tile) return showRoom(tile.dataset.room);
+  if(tile){
+    if(suppressTileClick){ suppressTileClick=false; return; }
+    if(pickMode){ togglePick(tile.dataset.room); return; }
+    return showRoom(tile.dataset.room);
+  }
 
   const id=t.id;
   if(id==='showAll'){ clearFilters(); renderBoard(); return; }
+  if(id==='cancelPick'){ pickMode=false; picked.clear(); renderBoard(); return; }
+  if(id==='killPicked'){
+    if(!picked.size){ toast('Tap the rooms you want to remove first'); return; }
+    return deleteRooms([...picked]);
+  }
+  const op=t.closest('[data-openroom]');
+  if(op){ closeSheet(); return showRoom(op.dataset.openroom); }
+  const pm=t.closest('[data-pickmode]');
+  if(pm){ closeSheet(); pickMode=true; picked.clear(); clearFilters(); showBoard(); toast('Tap rooms to select them'); return; }
+  const kr=t.closest('[data-killroom]');
+  if(kr){ closeSheet(); return deleteRooms([kr.dataset.killroom]); }
+  const qc=t.closest('[data-quickcomplete]');
+  if(qc){
+    const rr=room(qc.dataset.quickcomplete);
+    if(rr){ rr.status='complete'; rr.updated=Date.now(); save(); toast(`Room ${rr.number} marked complete`); }
+    closeSheet(); renderBoard(); return;
+  }
   if(id==='syncBtn') return syncNow(false);
   if(id==='todoBtn') return showTodo();
   if(id==='fab') return sheetAddRooms();
@@ -2488,6 +2610,44 @@ document.addEventListener('click', async e=>{
   if(dw){ r.work=r.work.filter(x=>x.id!==dw.dataset.delwork); r.updated=Date.now(); save(); closeSheet(); refresh(); return; }
 });
 
+/* Press and hold a tile for its shortcut menu. Cancels on scroll so a
+   flick down the board never opens it. */
+let pressTimer=null, pressEl=null, suppressTileClick=false;
+function startPress(el){
+  if(!el) return;
+  pressEl=el; el.classList.add('pressing');
+  pressTimer=setTimeout(()=>{
+    pressTimer=null;
+    el.classList.remove('pressing');
+    suppressTileClick=true;
+    if(navigator.vibrate) try{ navigator.vibrate(15); }catch(e){}
+    sheetRoomActions(el.dataset.room);
+  },500);
+}
+function cancelPress(){
+  if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
+  if(pressEl){ pressEl.classList.remove('pressing'); pressEl=null; }
+}
+document.addEventListener('touchstart',e=>{
+  const t=e.target.closest('.tile[data-room]');
+  if(t) startPress(t);
+},{passive:true});
+document.addEventListener('touchmove',cancelPress,{passive:true});
+document.addEventListener('touchend',cancelPress,{passive:true});
+document.addEventListener('touchcancel',cancelPress,{passive:true});
+document.addEventListener('mousedown',e=>{
+  const t=e.target.closest('.tile[data-room]');
+  if(t && e.button===0) startPress(t);
+});
+document.addEventListener('mouseup',cancelPress);
+document.addEventListener('mouseleave',cancelPress);
+document.addEventListener('contextmenu',e=>{
+  const t=e.target.closest('.tile[data-room]');
+  if(!t) return;
+  e.preventDefault(); cancelPress();
+  sheetRoomActions(t.dataset.room);
+});
+
 document.getElementById('scrim').addEventListener('click',closeSheet);
 document.getElementById('lightbox').addEventListener('click',e=>{
   if(e.target.closest('#lbClose')) return;
@@ -2536,7 +2696,9 @@ document.addEventListener('input',e=>{
       state=Object.assign(state,saved);
       if(typeof state.property!=='string'||!state.property) state.property='Home Away Inn';
       normalizeStandard();
+      normalizeDeleted();
       state.rooms=state.rooms.filter(r=>r&&typeof r==='object').map(normalizeRoom);
+      state.rooms=state.rooms.filter(r=>!isDeleted(r.id));
       if(!state.stdSeeded && !standardIsSet()){ state.standard.all=[...DEFAULT_STANDARD]; state.stdSeeded=true; save(); }
       if(standardIsSet()) state.stdSeeded=true;
     }
