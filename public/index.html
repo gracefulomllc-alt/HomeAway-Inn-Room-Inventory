@@ -220,6 +220,12 @@ textarea{min-height:70px;resize:vertical}
 .chev{display:inline-block;margin-left:7px;font-style:normal;transition:transform .15s ease;transform:rotate(0deg)}
 .card.collapsed .chev{transform:rotate(-90deg)}
 .card.collapsed > .body{display:none}
+.donebar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:#eaf5f0;border:1px solid #a6cfc0;color:#155e46;
+  border-radius:9px;padding:10px 12px;margin-bottom:11px;font-size:12.5px;
+}
+.donebar span{flex:1;min-width:150px}
 .navrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .navrow .pos{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .navrow .btn{min-width:90px}
@@ -392,7 +398,7 @@ body.printing .wrap,body.printing .topbar,body.printing .fab{display:none!import
 <button class="fab" id="fab">+ Add rooms</button>
 <div class="savebar" id="saveBar" style="display:none">
   <span class="msg" id="saveMsg"></span>
-  <button class="btn primary" id="saveRoom">Save room</button>
+  <button class="btn primary" id="saveRoom">Save now</button>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -532,9 +538,49 @@ async function writeState(){
       : 'Your last change could not be saved. Do not close the app — save a backup from the menu now.');
   }
 }
+let autoTimer=null, lastAutoSync=0, autoBusy=false;
 function save(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(writeState,250);
+  scheduleAutoSave();
+}
+/* Every change saves itself: written, read back to confirm it landed, then
+   published. The Save button is only there if you want to force it early. */
+function scheduleAutoSave(){
+  clearTimeout(autoTimer);
+  autoTimer=setTimeout(autoSaveNow,1200);
+  const bar=document.getElementById('saveBar');
+  if(bar && bar.style.display!=='none'){
+    const msg=document.getElementById('saveMsg');
+    bar.classList.remove('clean'); bar.classList.add('dirty');
+    if(msg) msg.innerHTML='<strong>Saving…</strong>Keep working, this happens on its own';
+  }
+}
+async function autoSaveNow(){
+  if(!loadOK||autoBusy) return;
+  autoBusy=true;
+  try{
+    const r=room(currentRoomId);
+    if(r) r.savedAt=Date.now();
+    clearTimeout(saveTimer);
+    await writeState();
+    const stored=await idbGet('kv','state');
+    const good = stored && Array.isArray(stored.rooms)
+      && (!r || (()=>{ const b=stored.rooms.find(x=>x.id===r.id);
+            return b && b.inventory.length===r.inventory.length
+                   && b.work.length===r.work.length
+                   && b.photos.length===r.photos.length; })());
+    if(!good && r){ r.savedAt=0; }
+    renderSaveBar();
+    if(good && Date.now()-lastAutoSync>15000){
+      lastAutoSync=Date.now();
+      syncNow(true);
+    }
+  }catch(e){
+    const r=room(currentRoomId); if(r) r.savedAt=0;
+    renderSaveBar();
+  }
+  autoBusy=false;
 }
 function flushSave(){ clearTimeout(saveTimer); writeState(); }
 
@@ -1020,6 +1066,10 @@ function renderRoom(){
 
     <div class="card">
       <div class="body">
+        ${r.status==='complete'?`<div class="donebar">
+          <span><strong>Marked complete.</strong> You can still change anything below — it stays complete unless you reopen it.</span>
+          <button class="btn sm" data-reopen="${r.id}">Reopen</button>
+        </div>`:''}
         <div class="btnrow">
           ${STATUSES.map(s=>`<button class="statusbtn ${r.status===s.k?'v-'+s.k:''}" data-roomstatus="${s.k}"><span class="dot s-${s.k}"></span>${s.label}</button>`).join('')}
         </div>
@@ -1196,8 +1246,8 @@ function renderSaveBar(){
   bar.classList.toggle('dirty',dirty);
   bar.classList.toggle('clean',!dirty);
   msg.innerHTML = dirty
-    ? `<strong>Unsaved changes</strong>${r.savedAt?'Last saved '+t(r.savedAt):'Never saved'}`
-    : `<strong>Saved ${r.savedAt?t(r.savedAt):''}</strong>Checked on disk`;
+    ? `<strong>Saving…</strong>${r.savedAt?'Last saved '+t(r.savedAt):'Happens on its own'}`
+    : `<strong>All changes saved ${r.savedAt?t(r.savedAt):''}</strong>Checked on disk${syncState.last?' and synced':''}`;
 }
 
 /* Writes, then reads the data back off the disk and checks it matches.
@@ -1208,7 +1258,7 @@ async function saveRoomNow(){
   btn.disabled=true; btn.textContent='Saving…';
   try{
     r.savedAt=Date.now();
-    clearTimeout(saveTimer);
+    clearTimeout(saveTimer); clearTimeout(autoTimer);
     await writeState();
     const stored=await idbGet('kv','state');
     const back=stored&&Array.isArray(stored.rooms)?stored.rooms.find(x=>x.id===r.id):null;
@@ -1290,6 +1340,19 @@ function renderTodo(){
         </div>
       </div>`).join('')
     : `<div class="card"><div class="empty">Nothing outstanding. Every room is complete, photographed, and meets the standard.</div></div>`}
+    ${done?`<div class="card">
+      <h2>Finished rooms <span class="counter">${done}</span></h2>
+      <div class="body tight">
+        ${state.rooms.filter(r=>!roomTodos(r).length).map(r=>`
+          <button class="todohead" data-room="${r.id}">
+            <span class="rn">${esc(r.number)}</span>
+            <span class="rt">${esc(r.type||'Not classified')} · ${r.inventory.length} items · ${r.photos.length} photos</span>
+            <span style="color:var(--complete);font-weight:700">✓</span>
+            <span style="color:var(--muted)">›</span>
+          </button>`).join('')}
+      </div>
+      <div class="body"><p class="hint" style="margin:0">Tap any of these to go back in and edit it.</p></div>
+    </div>`:''}
   `;
 }
 function showTodo(){
@@ -1525,7 +1588,9 @@ function sheetRoomActions(id){
     <p class="hint" style="margin-bottom:12px">${esc(r.type||'Not classified')} · ${r.inventory.length} items · ${r.photos.length} photos · ${t.length} outstanding</p>
     <div class="btnrow">
       <button class="btn primary full" data-openroom="${r.id}">Open room</button>
-      ${r.status!=='complete'?`<button class="btn full" data-quickcomplete="${r.id}">Mark complete</button>`:''}
+      ${r.status!=='complete'
+        ? `<button class="btn full" data-quickcomplete="${r.id}">Mark complete</button>`
+        : `<button class="btn full" data-reopen="${r.id}">Reopen for editing</button>`}
       <button class="btn full" data-pickmode="1">Select several rooms…</button>
       <button class="btn danger full" data-killroom="${r.id}">Delete room ${esc(r.number)}</button>
       <button class="btn full" data-close>Cancel</button>
@@ -1555,7 +1620,12 @@ async function deleteRooms(ids){
     state.rooms=state.rooms.filter(x=>x.id!==r.id);
   }
   picked.clear(); pickMode=false;
+  clearTimeout(autoTimer);
   await writeState();
+  const back=await idbGet('kv','state');
+  const still=back&&Array.isArray(back.rooms)?back.rooms.filter(x=>ids.includes(x.id)).length:0;
+  if(still) alert('The deletion did not save. Do not close the app — save a backup from the menu.');
+  lastAutoSync=0; syncNow(true);
   clearFilters(); showBoard();
   toast(`${list.length} room${list.length===1?'':'s'} deleted`);
 }
@@ -2326,6 +2396,14 @@ document.addEventListener('click', async e=>{
   if(pm){ closeSheet(); pickMode=true; picked.clear(); clearFilters(); showBoard(); toast('Tap rooms to select them'); return; }
   const kr=t.closest('[data-killroom]');
   if(kr){ closeSheet(); return deleteRooms([kr.dataset.killroom]); }
+  const ro=t.closest('[data-reopen]');
+  if(ro){
+    const rr=room(ro.dataset.reopen);
+    if(rr){ rr.status='progress'; rr.updated=Date.now(); save(); toast(`Room ${rr.number} reopened`); }
+    closeSheet();
+    if(currentRoomId===ro.dataset.reopen) renderRoom(); else renderBoard();
+    return;
+  }
   const qc=t.closest('[data-quickcomplete]');
   if(qc){
     const rr=room(qc.dataset.quickcomplete);
