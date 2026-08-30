@@ -1,9 +1,19 @@
 let getStore = null;
 let blobsLoadError = '';
-try {
-  ({ getStore } = await import('@netlify/blobs'));
-} catch (e) {
-  blobsLoadError = String(e && e.message || e);
+
+/* Loaded on first request rather than at module load: a top-level await here
+   can break the function bundler, and a function that fails to build is a 404
+   with no error message anywhere. */
+async function loadBlobs() {
+  if (getStore) return true;
+  try {
+    const mod = await import('@netlify/blobs');
+    getStore = mod.getStore;
+    return true;
+  } catch (e) {
+    blobsLoadError = String(e && e.message || e);
+    return false;
+  }
 }
 
 /* Shared survey store.
@@ -31,7 +41,7 @@ export default async (req) => {
 
   const url = new URL(req.url);
   const action = url.searchParams.get('action') || 'ping';
-  if (!getStore) {
+  if (!(await loadBlobs())) {
     return json({ ok: false, where: 'import', error: 'Netlify Blobs unavailable: ' + blobsLoadError }, 500);
   }
   let store;
