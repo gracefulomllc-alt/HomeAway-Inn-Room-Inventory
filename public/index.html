@@ -203,6 +203,23 @@ textarea{min-height:70px;resize:vertical}
   display:inline-flex;align-items:center;gap:2px;font-size:10.5px;font-weight:700;
   padding:1px 5px;border-radius:5px;font-family:var(--mono);
 }
+/* section jump bar */
+.jumpbar{
+  position:sticky;top:calc(58px + env(safe-area-inset-top));z-index:25;
+  display:flex;gap:6px;overflow-x:auto;padding:8px 0 10px;margin:-4px 0 4px;
+  background:var(--paper);-webkit-overflow-scrolling:touch;scrollbar-width:none;
+}
+.jumpbar::-webkit-scrollbar{display:none}
+.jumpbar button{
+  flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;
+  padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;min-height:38px;
+}
+.jumpbar button:active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.card > h2[data-toggle]{cursor:pointer;user-select:none}
+.card > h2[data-toggle]:active{background:#f2f1ec}
+.chev{display:inline-block;margin-left:7px;font-style:normal;transition:transform .15s ease;transform:rotate(0deg)}
+.card.collapsed .chev{transform:rotate(-90deg)}
+.card.collapsed > .body{display:none}
 .navrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .navrow .pos{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .navrow .btn{min-width:90px}
@@ -553,6 +570,7 @@ async function applySeed(){
   deleteIntent=Date.now();
   await writeState();
   await snapshot('recovery load');
+  syncNow(true);
   el.textContent='';                      // free the memory once it is on disk
   return state.rooms.length;
 }
@@ -991,41 +1009,34 @@ function renderRoom(){
 
   const todos=roomTodos(r);
   document.getElementById('roomView').innerHTML=`
-    ${todos.length?`<div class="card">
-      <h2>To-do for this room <span class="counter">${todos.length}</span></h2>
+    <div class="jumpbar">
+      ${todos.length?`<button data-jump="sec-todo">To-do ${todos.length}</button>`:''}
+      <button data-jump="sec-photos">Photos ${r.photos.length}</button>
+      ${standardIsSet()?`<button data-jump="sec-std">Standard</button>`:''}
+      <button data-jump="sec-items">Items ${r.inventory.length}</button>
+      <button data-jump="sec-jobs">Jobs ${openWork}</button>
+      <button data-jump="sec-details">Details</button>
+    </div>
+
+    <div class="card">
+      <div class="body">
+        <div class="btnrow">
+          ${STATUSES.map(s=>`<button class="statusbtn ${r.status===s.k?'v-'+s.k:''}" data-roomstatus="${s.k}"><span class="dot s-${s.k}"></span>${s.label}</button>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    ${todos.length?`<div class="card ${sectionOpen('todo')?'':'collapsed'}" id="sec-todo">
+      <h2 data-toggle="todo">To-do for this room <span class="counter">${todos.length}<i class="chev">▾</i></span></h2>
       <div class="body">
         ${todos.map(t=>todoLineHTML(r,t)).join('')}
       </div>
-    </div>`:`<div class="card"><div class="body" style="display:flex;align-items:center;gap:9px">
+    </div>`:`<div class="card" id="sec-todo"><div class="body" style="display:flex;align-items:center;gap:9px">
       <i class="sym" style="background:#eaf5f0;color:#155e46;border:1px solid #a6cfc0">✓</i>
       <span style="font-size:14px;font-weight:600">Nothing outstanding in this room</span></div></div>`}
 
-    <div class="card">
-      <h2>Room status <span class="counter">${r.updated?'Updated '+new Date(r.updated).toLocaleDateString():'New'}</span></h2>
-      <div class="body">
-        <div class="btnrow" style="margin-bottom:12px">
-          ${STATUSES.map(s=>`<button class="statusbtn ${r.status===s.k?'v-'+s.k:''}" data-roomstatus="${s.k}"><span class="dot s-${s.k}"></span>${s.label}</button>`).join('')}
-        </div>
-        <div class="grid2">
-          <label class="f"><span>Room number</span><input type="text" id="rNumber" value="${esc(r.number)}" autocomplete="off"></label>
-          <label class="f"><span>Floor / building</span><input type="text" id="rFloor" value="${esc(r.floor)}" placeholder="e.g. 2nd"></label>
-        </div>
-        <label class="f"><span>Room type</span><select id="rType">${typeOptions(r.type,'Not classified')}</select></label>
-        <label class="f" style="margin-bottom:0"><span>Room notes</span><textarea id="rNotes" placeholder="Anything the owners should know about this room">${esc(r.notes)}</textarea></label>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Upgrade potential ${r.upgradeTo?'<span class="chip"><span class="dot s-progress"></span>Candidate</span>':''}</h2>
-      <div class="body">
-        <label class="f"><span>Could be re-classified as</span><select id="rUpgrade">${typeOptions(r.upgradeTo,'No — current type is right')}</select></label>
-        <label class="f" style="margin-bottom:0"><span>What's holding it back</span><textarea id="rUpNote" placeholder="Carpet, bathroom fan, mismatched furniture…">${esc(r.upgradeNote||'')}</textarea></label>
-        <p class="hint">Pick a target type and this room lands on the Upgrade Opportunities sheet for the owners, with the jobs below attached.</p>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Photos <span class="counter">${r.photos.length} / ${MAX_PHOTOS}</span></h2>
+    <div class="card ${sectionOpen('photos')?'':'collapsed'}" id="sec-photos">
+      <h2 data-toggle="photos">Photos <span class="counter">${r.photos.length} / ${MAX_PHOTOS}<i class="chev">▾</i></span></h2>
       <div class="body">
         <div class="btnrow" style="margin-bottom:${r.photos.length?'11px':'0'}">
           <button class="btn sm" id="camBtn">Take photo</button>
@@ -1037,7 +1048,7 @@ function renderRoom(){
 
     ${(()=>{ if(!standardIsSet()) return '';
       const st=standardState(r);
-      if(!st.length) return `<div class="card"><h2>Against room standard <span class="counter">not applicable</span></h2>
+      if(!st.length) return `<div class="card" id="sec-std"><h2>Against room standard <span class="counter">not applicable</span></h2>
         <div class="body"><p class="hint" style="margin:0">${isGuestRoom(r.type)
           ? 'No standard set for this room type yet.'
           : `${esc(r.type)} is exempt from the guest-room standard. Add items under Menu → Room standard if you want it checked.`}</p></div></div>`;
@@ -1049,14 +1060,13 @@ function renderRoom(){
       if(gone) bits.push(gone+' missing');
       if(shortN) bits.push(shortN+' short');
       const word={unchecked:'Not checked',present:'Here',short:'Short',missing:'Missing'};
-      return `<div class="card">
-        <h2>Against room standard <span class="counter">${bits.length?bits.join(' · '):'all present'}</span></h2>
+      return `<div class="card ${sectionOpen('std')?'':'collapsed'}" id="sec-std">
+        <h2 data-toggle="std">Against room standard <span class="counter">${bits.length?bits.join(' · '):'all present'}<i class="chev">▾</i></span></h2>
         <div class="body">
           <div class="btnrow" style="margin-bottom:11px">
             ${todo?`<button class="btn sm" id="allPresent">Mark remaining ${todo} present</button>`:''}
             <button class="btn sm" id="resetChecks">Clear all checks</button>
           </div>
-          <p class="hint" style="margin:0 0 10px">Anything already marked Missing stays marked — the bulk button only fills in what you haven't looked at yet.</p>
           ${st.map(x=>`<div class="stdrow st-${x.state}">
             <span class="nm">${esc(x.name)}${x.need>1?` <span class="need">${x.have} of ${x.need}</span>`:''}
               <span class="tag t-${x.state}">${word[x.state]}</span></span>
@@ -1067,8 +1077,8 @@ function renderRoom(){
         </div>
       </div>`; })()}
 
-    <div class="card">
-      <h2>What's in the room <span class="counter">${r.inventory.length}</span></h2>
+    <div class="card ${sectionOpen('items')?'':'collapsed'}" id="sec-items">
+      <h2 data-toggle="items">What's in the room <span class="counter">${r.inventory.length}<i class="chev">▾</i></span></h2>
       <div class="body">
         <div class="btnrow">
           <button class="btn sm" id="quickAdd">Quick add items</button>
@@ -1079,8 +1089,8 @@ function renderRoom(){
       <div class="body tight" id="invList"></div>
     </div>
 
-    <div class="card">
-      <h2>What needs to be done <span class="counter">${openWork} open</span></h2>
+    <div class="card ${sectionOpen('jobs')?'':'collapsed'}" id="sec-jobs">
+      <h2 data-toggle="jobs">What needs to be done <span class="counter">${openWork} open<i class="chev">▾</i></span></h2>
       <div class="body">
         <div class="btnrow">
           <button class="btn sm" id="quickWork">Common jobs</button>
@@ -1090,6 +1100,21 @@ function renderRoom(){
       <div class="body tight" id="workList"></div>
     </div>
 
+    <div class="card ${sectionOpen('details')?'':'collapsed'}" id="sec-details">
+      <h2 data-toggle="details">Room details <span class="counter">${esc(r.type||'Not classified')}<i class="chev">▾</i></span></h2>
+      <div class="body">
+        <div class="grid2">
+          <label class="f"><span>Room number</span><input type="text" id="rNumber" value="${esc(r.number)}" autocomplete="off"></label>
+          <label class="f"><span>Floor / building</span><input type="text" id="rFloor" value="${esc(r.floor)}" placeholder="e.g. 2nd"></label>
+        </div>
+        <label class="f"><span>Room type</span><select id="rType">${typeOptions(r.type,'Not classified')}</select></label>
+        <label class="f"><span>Room notes</span><textarea id="rNotes" placeholder="Anything the owners should know about this room">${esc(r.notes)}</textarea></label>
+        <label class="f"><span>Could be re-classified as</span><select id="rUpgrade">${typeOptions(r.upgradeTo,'No — current type is right')}</select></label>
+        <label class="f" style="margin-bottom:0"><span>What's holding it back</span><textarea id="rUpNote" placeholder="Carpet, bathroom fan, mismatched furniture…">${esc(r.upgradeNote||'')}</textarea></label>
+        <p class="hint">Updated ${r.updated?new Date(r.updated).toLocaleDateString():'—'}. Hold this room's tile on the board to delete it.</p>
+      </div>
+    </div>
+
     ${(()=>{ const nb=roomNeighbours(r.id); return `<div class="card"><div class="body">
       <div class="navrow">
         ${nb.prev?`<button class="btn" data-gotoroom="${nb.prev.id}">‹ ${esc(nb.prev.number)}</button>`:'<span></span>'}
@@ -1097,17 +1122,11 @@ function renderRoom(){
         ${nb.next?`<button class="btn" data-gotoroom="${nb.next.id}">${esc(nb.next.number)} ›</button>`:'<span></span>'}
       </div>
     </div></div>`; })()}
-
-    <div class="card">
-      <div class="body">
-        <button class="btn danger full" id="delRoom">Delete room ${esc(r.number)}</button>
-      </div>
-    </div>
   `;
 
   /* inventory rows */
   const inv=document.getElementById('invList');
-  inv.innerHTML = r.inventory.length ? r.inventory.map(i=>`
+  if(inv) inv.innerHTML = r.inventory.length ? r.inventory.map(i=>`
     <div class="row">
       <div class="main">
         <div class="name">${esc(i.name)}</div>
@@ -1125,7 +1144,7 @@ function renderRoom(){
 
   /* work rows */
   const wl=document.getElementById('workList');
-  wl.innerHTML = r.work.length ? r.work.map(w=>`
+  if(wl) wl.innerHTML = r.work.length ? r.work.map(w=>`
     <div class="row">
       <div class="main">
         <div class="name">${esc(w.task)}</div>
@@ -1143,6 +1162,7 @@ function renderRoom(){
 
   /* photos */
   const pg=document.getElementById('photoGrid');
+  if(!pg) return;
   const token=++renderToken;
   pg.innerHTML='';
   (async()=>{
@@ -1155,6 +1175,19 @@ function renderRoom(){
   })();
 }
 
+/* Which sections are open. Kept on the device so the layout you set up
+   stays put as you move from room to room. */
+const SECTION_DEFAULTS={todo:true,photos:true,std:true,items:true,jobs:true,details:false};
+function sectionOpen(k){
+  if(!state.ui||typeof state.ui!=='object') state.ui={};
+  if(state.ui[k]===undefined) return SECTION_DEFAULTS[k]!==false;
+  return !!state.ui[k];
+}
+function toggleSection(k){
+  if(!state.ui||typeof state.ui!=='object') state.ui={};
+  state.ui[k]=!sectionOpen(k);
+  save();
+}
 function renderSaveBar(){
   const r=room(currentRoomId); if(!r) return;
   const bar=document.getElementById('saveBar'), msg=document.getElementById('saveMsg');
@@ -1386,7 +1419,7 @@ async function syncNow(quiet){
           full:await blobToDataURL(p.full), thumb:await blobToDataURL(p.thumb)}});
         upPhotos++;
       }catch(e){}
-      if(upPhotos%10===0&&upPhotos) toast(`Uploading photos… ${upPhotos}`);
+      if(upPhotos%5===0&&upPhotos){ syncState.phase=`↑ ${upPhotos}`; renderSyncChip(); toast(`Sending photos… ${upPhotos}`); }
     }
     const wanted=new Set(state.rooms.flatMap(r=>r.photos));
     for(const id of wanted){
@@ -1399,7 +1432,7 @@ async function syncNow(quiet){
           full:await (await fetch(p.full)).blob(), thumb:await (await fetch(p.thumb||p.full)).blob()});
         downPhotos++;
       }catch(e){}
-      if(downPhotos%10===0) toast(`Downloading photos… ${downPhotos}`);
+      if(downPhotos%5===0){ syncState.phase=`↓ ${downPhotos}`; renderSyncChip(); toast(`Getting photos… ${downPhotos}`); }
     }
 
     /* the room standard travels with the survey */
@@ -1420,18 +1453,19 @@ async function syncNow(quiet){
     await supersede(); deleteIntent=Date.now(); await writeState();
     syncState.last=Date.now(); syncState.rooms=state.rooms.length;
     if(!quiet) toast(`Synced · ${pulled} in, ${pushed} out${upPhotos||downPhotos?` · ${upPhotos}↑ ${downPhotos}↓ photos`:''}`);
+    else if(downPhotos||upPhotos) toast(`Photos synced · ${downPhotos} received, ${upPhotos} sent`);
     refresh();
   }catch(e){
     syncState.err=String(e&&e.message||e);
     if(!quiet) toast('Sync failed — working offline. '+syncState.err);
   }
-  syncState.busy=false; renderSyncChip();
+  syncState.busy=false; syncState.phase=''; renderSyncChip();
 }
 
 function renderSyncChip(){
   const el=document.getElementById('syncBtn');
   if(!el) return;
-  el.textContent = syncState.busy ? 'Syncing…'
+  el.textContent = syncState.busy ? (syncState.phase||'Syncing…')
     : syncState.err ? 'Offline'
     : syncState.last ? 'Synced' : 'Sync';
   el.style.opacity = syncState.busy ? '.6' : '1';
@@ -2164,6 +2198,7 @@ async function applyMerge(){
   deleteIntent=Date.now();
   await writeState();
   await snapshot('after merge');
+  syncNow(true);
   pendingMerge=null;
   closeSheet(); clearFilters(); showBoard();
   toast(`Merged · ${state.rooms.length} rooms total`);
@@ -2246,6 +2281,7 @@ async function applyRestore(){
     const check=await idbGet('kv','state');
     const landed=check&&Array.isArray(check.rooms)?check.rooms.length:0;
     await snapshot('after restore');
+    syncNow(true);      // publish it so every other phone gets these photos
     const want=state.rooms.length;
     pendingRestore=null;
     closeSheet(); clearFilters(); showBoard();
@@ -2301,6 +2337,16 @@ document.addEventListener('click', async e=>{
   if(id==='fab') return sheetAddRooms();
   if(id==='backBtn'){ flushSave(); return showBoard(); }
   if(id==='saveRoom') return saveRoomNow();
+  const tg=t.closest('[data-toggle]');
+  if(tg){ toggleSection(tg.dataset.toggle); renderRoom(); return; }
+  const jp=t.closest('[data-jump]');
+  if(jp){
+    const key=jp.dataset.jump.replace('sec-','');
+    if(!sectionOpen(key)){ toggleSection(key); renderRoom(); }
+    const el=document.getElementById(jp.dataset.jump);
+    if(el&&el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
   if(id==='menuBtn') return sheetMenu();
   if(id==='lbClose'){
     const im=document.getElementById('lbImg');
