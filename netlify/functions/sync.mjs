@@ -64,11 +64,12 @@ export default async (req) => {
     }
 
     if (action === 'manifest') {
-      const rooms = [], photos = [];
+      const rooms = [], photos = [], deleted = [];
       for await (const entry of store.list({ paginate: true })) {
         for (const b of entry.blobs) {
           if (b.key.startsWith('room:')) rooms.push(b.key.slice(5));
           else if (b.key.startsWith('photo:')) photos.push(b.key.slice(6));
+          else if (b.key.startsWith('del:')) deleted.push(b.key.slice(4));
         }
       }
       const stamps = {};
@@ -77,7 +78,7 @@ export default async (req) => {
         if (r) stamps[id] = { updated: r.updated || 0, rev: r.rev || 0, number: r.number };
       }));
       const meta = await store.get('meta', { type: 'json' }).catch(() => null);
-      return json({ ok: true, rooms: stamps, photos, meta: meta || null });
+      return json({ ok: true, rooms: stamps, photos, deleted, meta: meta || null });
     }
 
     if (action === 'room' && req.method === 'GET') {
@@ -90,6 +91,8 @@ export default async (req) => {
       const body = await req.json();
       const room = body.room;
       if (!room || !room.id) return json({ ok: false, error: 'no room' }, 400);
+      const tomb = await store.get('del:' + room.id, { type: 'json' }).catch(() => null);
+      if (tomb) return json({ ok: false, deleted: true }, 410);   // deleted elsewhere
       const current = await store.get('room:' + room.id, { type: 'json' }).catch(() => null);
       const curRev = current ? (current.rev || 0) : 0;
       if (current && (body.baseRev || 0) !== curRev) {
@@ -102,7 +105,11 @@ export default async (req) => {
     }
 
     if (action === 'room' && req.method === 'DELETE') {
-      await store.delete('room:' + url.searchParams.get('id'));
+      const id = url.searchParams.get('id');
+      await store.delete('room:' + id);
+      /* Tombstone. Without it, another phone that still holds the room would
+         simply push it back and the deletion would undo itself. */
+      await store.setJSON('del:' + id, { at: Date.now() });
       return json({ ok: true });
     }
 
@@ -132,4 +139,3 @@ export default async (req) => {
   }
 };
 
-export const config = { path: '/api/sync' };
