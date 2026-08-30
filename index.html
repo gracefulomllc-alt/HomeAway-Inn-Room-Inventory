@@ -1,0 +1,2606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
+<title>Room Survey — Home Away Inn</title>
+<style>
+:root{
+  color-scheme: only light;   /* stops Android/Chrome from inverting the report */
+  --ink:#111a21;
+  --ink-2:#1d2b35;
+  --paper:#f6f5f1;
+  --card:#ffffff;
+  --line:#dcdad2;
+  --line-2:#c4c1b6;
+  --text:#1b2229;
+  --muted:#6a7079;
+  --complete:#1f7a5c;
+  --progress:#b5810c;
+  --needs:#bc4423;
+  --notdone:#8a8f97;
+  --focus:#2f6fd0;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper);color:var(--text);font-family:var(--sans);
+  font-size:16px;line-height:1.45;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- chrome ---------- */
+.topbar{
+  position:sticky;top:0;z-index:40;background:var(--ink);color:#fff;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+  display:flex;align-items:center;gap:10px;
+}
+.topbar h1{
+  margin:0;font-size:15px;font-weight:650;letter-spacing:.02em;flex:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.topbar .sub{display:block;font-family:var(--mono);font-size:10.5px;font-weight:400;opacity:.6;letter-spacing:.06em;text-transform:uppercase}
+.iconbtn{
+  background:rgba(255,255,255,.1);border:0;color:#fff;border-radius:8px;
+  min-width:44px;height:38px;padding:0 11px;font-size:13px;font-weight:600;cursor:pointer;
+}
+.iconbtn:active{background:rgba(255,255,255,.22)}
+
+.wrap{max-width:820px;margin:0 auto;padding:14px 14px 90px}
+body.inroom .wrap{padding-bottom:126px}
+
+/* ---------- status tokens ---------- */
+.dot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block}
+.s-complete{background:var(--complete)}
+.s-progress{background:var(--progress)}
+.s-needs{background:var(--needs)}
+.s-notdone{background:var(--notdone)}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;border-radius:999px;
+  padding:4px 10px;font-size:12px;font-weight:600;background:#fff;border:1px solid var(--line);
+}
+
+/* ---------- summary strip ---------- */
+.strip{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;
+}
+.strip button{
+  background:var(--card);border:0;padding:9px 4px 10px;text-align:center;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+.strip button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.strip .n{font-family:var(--mono);font-size:19px;font-weight:600;line-height:1}
+.strip .l{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.7;line-height:1.15}
+
+.searchrow{display:flex;gap:8px;margin-bottom:12px}
+.searchrow input{
+  flex:1;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;
+}
+
+/* ---------- room board ---------- */
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.tile{
+  position:relative;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--notdone);
+  border-radius:10px;padding:10px 10px 9px;text-align:left;cursor:pointer;min-height:74px;
+  display:flex;flex-direction:column;justify-content:space-between;
+}
+.tile:active{background:#f0efea}
+.tile.b-complete{border-left-color:var(--complete)}
+.tile.b-progress{border-left-color:var(--progress)}
+.tile.b-needs{border-left-color:var(--needs)}
+.tile.b-notdone{border-left-color:var(--notdone)}
+.tile .num{font-family:var(--mono);font-size:19px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.tile .ty{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .meta{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:6px}
+.tile .flag{position:absolute;top:8px;right:8px;font-size:10px;font-weight:700;color:var(--needs);font-family:var(--mono)}
+
+/* ---------- cards / sections ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:11px;margin-bottom:12px;overflow:hidden}
+.card > h2{
+  margin:0;padding:11px 13px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);font-weight:700;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fbfaf7;
+}
+.card .body{padding:12px 13px}
+.card .body.tight{padding:0}
+
+label.f{display:block;margin-bottom:10px}
+label.f > span{display:block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:4px}
+input[type=text],input[type=number],select,textarea{
+  width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:8px;background:#fff;
+}
+textarea{min-height:70px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.btn{
+  border:1px solid var(--line-2);background:#fff;border-radius:9px;padding:11px 14px;
+  font-weight:600;font-size:14px;cursor:pointer;min-height:44px;
+}
+.btn:active{background:#efeee9}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.danger{color:var(--needs);border-color:#e2b7a9}
+.btn.full{width:100%}
+.btn.sm{padding:7px 11px;min-height:36px;font-size:13px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- list rows ---------- */
+.row{
+  display:flex;gap:10px;align-items:flex-start;padding:11px 13px;border-bottom:1px solid var(--line);
+}
+.row:last-child{border-bottom:0}
+.row .main{flex:1;min-width:0}
+.row .name{font-weight:600;font-size:14.5px;word-break:break-word}
+.row .sub{font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px}
+.row .note{font-size:13px;color:var(--muted);margin-top:3px;word-break:break-word}
+.empty{padding:22px 14px;text-align:center;color:var(--muted);font-size:13.5px}
+
+.statusbtn{
+  border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 9px;font-size:11.5px;
+  font-weight:700;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;min-height:34px;
+}
+.statusbtn.v-complete{border-color:#a6cfc0;background:#eaf5f0;color:#155e46}
+.statusbtn.v-progress{border-color:#e5cf9a;background:#fbf4e3;color:#7d5a06}
+.statusbtn.v-needs{border-color:#e6b8a8;background:#fbeee9;color:#93341a}
+.statusbtn.v-notdone{border-color:var(--line);background:#f4f3ef;color:#5f656d}
+
+/* ---------- photos ---------- */
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:7px}
+.ph{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:#e9e8e3}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .x{
+  position:absolute;top:3px;right:3px;background:rgba(10,15,20,.72);color:#fff;border:0;
+  width:26px;height:26px;border-radius:6px;font-size:15px;line-height:1;cursor:pointer;
+}
+.counter{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:600}
+
+/* ---------- quick add chips ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chips button{
+  border:1px dashed var(--line-2);background:#fff;border-radius:999px;padding:7px 11px;
+  font-size:12.5px;cursor:pointer;min-height:36px;
+}
+.chips button:active{background:#eceae4}
+.chips button.on{background:var(--ink);color:#fff;border-style:solid;border-color:var(--ink)}
+.chips button.on::before{content:'✓ ';font-weight:700}
+.chips button.warn{border-color:var(--needs);color:var(--needs)}
+/* to-do */
+.sym{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:22px;height:22px;border-radius:6px;font-size:13px;font-weight:700;line-height:1;
+}
+.t-miss{background:#fbeee9;color:#a8391a;border:1px solid #e6b8a8}
+.t-short{background:#fbf4e3;color:#7d5a06;border:1px solid #e5cf9a}
+.t-job{background:#eaeff6;color:#2b4a72;border:1px solid #bcccdf}
+.t-photo{background:#eef0f2;color:#4a5560;border:1px solid #ccd2d8}
+.t-open{background:#f2f1ee;color:#5f656d;border:1px solid #d8d5cc}
+.todoline{display:flex;gap:9px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.todoline:last-child{border-bottom:0}
+.todoline .tx{flex:1;min-width:120px;font-size:14px;word-break:break-word}
+.todoline .acts{display:flex;gap:6px;flex:none}
+.todoline .acts .btn{min-height:36px;padding:6px 10px;font-size:12.5px}
+.todohead{
+  display:flex;align-items:center;gap:9px;width:100%;background:#fbfaf7;border:0;
+  border-bottom:1px solid var(--line);padding:11px 13px;cursor:pointer;text-align:left;
+}
+.todohead .rn{font-family:var(--mono);font-size:16px;font-weight:600;flex:none}
+.todohead .rt{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.todohead .cnt{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--needs);flex:none}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.legend span{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.tilesyms{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.tilesyms .s{
+  display:inline-flex;align-items:center;gap:2px;font-size:10.5px;font-weight:700;
+  padding:1px 5px;border-radius:5px;font-family:var(--mono);
+}
+.navrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.navrow .pos{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.navrow .btn{min-width:90px}
+.qline{display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap}
+.qbtn{width:34px;height:34px;border:1px solid var(--line-2);background:#fff;border-radius:7px;
+  font-size:17px;font-weight:700;line-height:1;cursor:pointer;flex:none}
+.qline .q{font-family:var(--mono);font-size:14px;font-weight:700;min-width:20px;text-align:center}
+.condbtn{border:1px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12px;
+  font-weight:700;cursor:pointer;min-height:34px;background:#fff}
+.c-Good{background:#eaf5f0;color:#155e46;border-color:#a6cfc0}
+.c-Fair{background:#fbf4e3;color:#7d5a06;border-color:#e5cf9a}
+.c-Poor{background:#fbeee9;color:#93341a;border-color:#e6b8a8}
+.c-Damaged{background:#f7e2da;color:#7c2d12;border-color:#dda58f}
+.c-Missing{background:#f0efeb;color:#5f656d;border-color:#d8d5cc}
+.stdrow{display:flex;align-items:center;gap:8px;padding:8px 8px;border-bottom:1px solid var(--line);flex-wrap:wrap;border-radius:7px}
+.stdrow:last-child{border-bottom:0}
+.stdrow.st-missing{background:#fbeee9}
+.stdrow.st-short{background:#fbf4e3}
+.stdrow.st-present{opacity:.62}
+.stdrow .nm{flex:1;min-width:130px;font-weight:600;font-size:14px}
+.stdrow .need{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:600}
+.stdrow .tag{display:block;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;margin-top:2px}
+.t-unchecked{color:var(--muted)}
+.t-present{color:var(--complete)}
+.t-short{color:var(--progress)}
+.t-missing{color:var(--needs)}
+.stdrow .bs{display:flex;gap:6px}
+.btn.pick{background:var(--complete);border-color:var(--complete);color:#fff}
+.btn.pickbad{background:var(--needs);border-color:var(--needs);color:#fff}
+.catlabel{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;width:100%;margin:6px 0 1px}
+
+/* ---------- sheet / modal ---------- */
+.scrim{position:fixed;inset:0;background:rgba(12,18,24,.5);z-index:60;display:none}
+.scrim.on{display:block}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:61;background:var(--paper);
+  border-radius:16px 16px 0 0;max-height:92vh;overflow:auto;display:none;
+  padding:16px 14px calc(20px + env(safe-area-inset-bottom));
+}
+.sheet.on{display:block}
+.sheet h3{margin:2px 0 14px;font-size:17px}
+.sheetgrab{width:38px;height:4px;background:var(--line-2);border-radius:2px;margin:0 auto 12px}
+
+.lightbox{position:fixed;inset:0;background:#0b0f13;z-index:80;display:none;align-items:center;justify-content:center;padding:12px}
+.lightbox.on{display:flex}
+.lightbox img{max-width:100%;max-height:86vh;object-fit:contain}
+.lightbox .close{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px}
+
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:90;
+  background:var(--ink);color:#fff;padding:11px 16px;border-radius:9px;font-size:13.5px;font-weight:600;
+  box-shadow:0 6px 24px rgba(0,0,0,.28);display:none;max-width:90vw;text-align:center;
+}
+.toast.on{display:block}
+
+.savebar{
+  position:fixed;left:0;right:0;bottom:0;z-index:35;background:var(--card);
+  border-top:1px solid var(--line-2);display:flex;align-items:center;gap:10px;
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  box-shadow:0 -3px 14px rgba(0,0,0,.09);
+}
+.savebar .msg{flex:1;min-width:0;font-size:12.5px;line-height:1.3;color:var(--muted)}
+.savebar .msg strong{display:block;font-size:13.5px}
+.savebar.dirty .msg strong{color:var(--needs)}
+.savebar.clean .msg strong{color:var(--complete)}
+.savebar button{min-width:130px}
+body.printing .savebar{display:none!important}
+.fab{
+  position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:30;
+  background:var(--ink);color:#fff;border:0;border-radius:999px;padding:14px 20px;
+  font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.22);
+}
+
+.hint{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.warnbar{
+  background:#fbf4e3;border:1px solid #e5cf9a;border-radius:9px;padding:10px 12px;
+  font-size:12.5px;color:#6d4f07;margin-bottom:12px;
+}
+.hidden{display:none!important}
+/* ---------- report / print ---------- */
+#reportRoot{display:none}
+body.printing #reportRoot{display:block}
+body.printing .wrap,body.printing .topbar,body.printing .fab{display:none!important}
+.printbar{
+  position:sticky;top:0;z-index:50;background:var(--ink);color:#fff;
+  padding:calc(9px + env(safe-area-inset-top)) 12px 9px;display:flex;gap:8px;align-items:center;
+}
+.printbar .t{flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#reportRoot,#reportRoot *{forced-color-adjust:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+#reportRoot .doc{max-width:900px;margin:0 auto;padding:22px 16px 60px;background:#fff;color:#14181d}
+#reportRoot h1,#reportRoot h2,#reportRoot td,#reportRoot strong{color:#14181d}
+#reportRoot thead{display:table-header-group}   /* repeat column headers on every page */
+#reportRoot tbody{display:table-row-group}
+#reportRoot h1{font-size:23px;margin:0 0 4px;letter-spacing:-.01em}
+#reportRoot .lead{color:#555b63;font-size:12.5px;margin:0 0 6px;font-family:var(--mono);line-height:1.6}
+#reportRoot section{border-top:2px solid #14181d;padding:15px 0 20px;background:#fff}
+#reportRoot header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#reportRoot h2{font-size:18px;margin:0;break-after:avoid}
+#reportRoot h3{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:#555b63;margin:15px 0 5px;break-after:avoid}
+#reportRoot .meta{color:#555b63;font-size:12px;margin:3px 0 0;font-family:var(--mono)}
+#reportRoot .notes{background:#f2f1ec;border-left:3px solid #9b978c;padding:8px 11px;font-size:13px;margin:10px 0 0;break-inside:avoid;color:#14181d}
+#reportRoot .miss{background:#fbeae4;border-left:3px solid #a8391a;padding:8px 11px;font-size:13px;margin:6px 0 0;break-inside:avoid;color:#5d2110;font-weight:600}
+#reportRoot .up{background:#fbf1d8;border-left:3px solid #a8760b;padding:8px 11px;font-size:13px;margin:10px 0 0;break-inside:avoid;color:#4a3503}
+#reportRoot .st{font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+#reportRoot .st-complete{background:#eaf5f0;color:#155e46}
+#reportRoot .st-progress{background:#fbf4e3;color:#7d5a06}
+#reportRoot .st-needs{background:#fbeee9;color:#93341a}
+#reportRoot .st-notdone{background:#f0efeb;color:#5f656d}
+#reportRoot .pg{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:11px}
+#reportRoot .pg figure{margin:0;break-inside:avoid;page-break-inside:avoid}
+#reportRoot .pg img{width:100%;height:auto;max-height:76mm;object-fit:contain;background:#f2f1ed;border:1px solid #b9b6ad;border-radius:4px;display:block}
+#reportRoot table{width:100%;border-collapse:collapse;font-size:12.5px;break-inside:auto}
+#reportRoot th{text-align:left;background:#eceae4;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#3c4148;font-weight:700}
+#reportRoot th,#reportRoot td{border:1px solid #b9b6ad;padding:5px 7px;vertical-align:top;background-clip:padding-box}
+#reportRoot td{background:#fff}
+#reportRoot tr{break-inside:avoid}
+#reportRoot .cover{border-top:0;padding-top:0}
+#reportRoot .pagebreak{break-before:page;page-break-before:always}
+
+@media print{
+  html,body{background:#fff!important;color:#14181d!important}
+  #reportRoot,#reportRoot .doc,#reportRoot section{background:#fff!important;color:#14181d!important}
+  @page{margin:13mm}
+  .topbar,.fab,.wrap,.sheet,.scrim,.toast,.printbar,.lightbox{display:none!important}
+  #reportRoot{display:block!important}
+  #reportRoot .doc{padding:0;max-width:none}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="iconbtn" id="backBtn" style="display:none">‹ Rooms</button>
+  <h1 id="title">Room Survey<span class="sub" id="subtitle">Home Away Inn</span></h1>
+  <button class="iconbtn" id="syncBtn">Sync</button>
+  <button class="iconbtn" id="todoBtn">To-do</button>
+  <button class="iconbtn" id="menuBtn">Menu</button>
+</div>
+
+<div class="wrap">
+  <!-- BOARD -->
+  <div id="boardView">
+    <div id="filterBar" class="warnbar hidden" style="background:#eef3fb;border-color:#b9cbe8;color:#1e3a5f"></div>
+    <div id="fileWarn" class="warnbar hidden" style="background:#fbeee9;border-color:#e6b8a8;color:#7c2d12"></div>
+    <div id="backupWarn" class="warnbar hidden">
+      You haven't backed up in a while. Menu → <strong>Save backup file</strong> keeps a copy off this phone.
+    </div>
+
+    <div class="strip" id="strip"></div>
+
+    <div class="searchrow">
+      <input type="text" id="search" placeholder="Search room or note" autocomplete="off">
+      <select id="typeFilter" style="flex:none;width:41%"></select>
+    </div>
+
+    <div class="board" id="board"></div>
+    <div id="boardEmpty" class="empty hidden">
+      No rooms yet. Tap <strong>Add rooms</strong> to enter your room numbers.
+    </div>
+  </div>
+
+  <!-- ROOM -->
+  <div id="roomView" class="hidden"></div>
+
+  <!-- TO-DO -->
+  <div id="todoView" class="hidden"></div>
+</div>
+
+<button class="fab" id="fab">+ Add rooms</button>
+<div class="savebar" id="saveBar" style="display:none">
+  <span class="msg" id="saveMsg"></span>
+  <button class="btn primary" id="saveRoom">Save room</button>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet"><div class="sheetgrab"></div><div id="sheetBody"></div></div>
+
+<div class="lightbox" id="lightbox">
+  <button class="iconbtn close" id="lbClose">Close</button>
+  <img id="lbImg" alt="">
+</div>
+
+<script id="seedData" type="application/json">{"state":{"v":1,"rev":0,"property":"Home Away Inn","rooms":[{"id":"kg9irkdtqimq","number":"101","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"ihjtg0ifw4rz","number":"102","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"ythd8jnq866m","number":"103","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"7yzlermwaha4","number":"104","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"rbovk0zddtxc","number":"105","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"ngug60v5noew","number":"106","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"vi0d6rsk29y4","number":"107","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"ole7e0fwlkl4","number":"108","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"9wh9u58vdk9h","number":"109","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"sd0a7iucdndf","number":"110","type":"Storage room","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"eermf07fh2zz","number":"111","type":"Storage room","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"j6xv5s3oz66h","number":"112","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"46p663vimpyh","number":"113","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"ms4w18ltmb9c","number":"114","type":"Superior Single","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"bfggixtv7f5r","number":"115","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"r9la1qtdvcpa","number":"116","type":"Superior Double","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"kfmdxaj6hjvw","number":"117","type":"Storage room","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"biprt0raltno","number":"118","type":"Economy Single","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"qiklca1rvug4","number":"119","type":"Storage room","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"lyjesumeay48","number":"120","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"g1znhrv12shy","number":"121","type":"","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"4no69tll6gag","number":"122","type":"Storage room","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"zfop3fi47zca","number":"123","type":"Superior Double","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"hizrv6uwdgp0","number":"124","type":"Superior Single","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0},{"id":"7o0jdva2ginx","number":"125","type":"Economy Single","floor":"","status":"notdone","notes":"","upgradeTo":"","upgradeNote":"","inventory":[],"work":[],"photos":[],"updated":0,"savedAt":0}],"standard":{"all":["Bed","Microwave","Chair","Trash can","Fridge","TV","TV remote","Informational folder","Soap holder","Towel holder","Toilet paper holder","Bath mat","Clean curtains","Working lights","Working AC","Desk x2","Nightstand","Lamp","Alarm clock","Smoke detector"],"byType":{}},"stdSeeded":true,"lastBackup":0},"photos":[]}</script>
+
+<div id="reportRoot"></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   Room Survey — standalone management tool
+   Data: IndexedDB (survives reloads). Photos stored as blobs.
+   ============================================================ */
+
+const STATUSES = [
+  {k:'notdone',  label:'Not done'},
+  {k:'progress', label:'In progress'},
+  {k:'needs',    label:'Needs work'},
+  {k:'complete', label:'Complete'}
+];
+const CONDITIONS = ['Good','Fair','Poor','Damaged','Missing'];
+const ROOM_TYPES = ['Superior Double','Superior Single','Economy Double','Economy Single','Storage room'];
+/* Not let to guests, so the guest-room baseline doesn't apply. Only its own
+   list counts — leave that empty and it's simply never flagged. */
+const NON_GUEST = ['Storage room'];
+const isGuestRoom = t => !NON_GUEST.includes(t);
+const MAX_PHOTOS = 10;
+
+const CATALOG = {
+  'Beds & linens':['Queen bed','King bed','Twin bed','Mattress','Box spring','Headboard','Pillows','Comforter','Blanket','Mattress protector'],
+  'Furniture':['Nightstand','Dresser','Desk','Desk chair','Armchair','Side table','Luggage rack','Floor lamp','Table lamp','Mirror','Artwork'],
+  'Appliances':['TV','TV remote','Mini fridge','Microwave','Coffee maker','AC unit','Heater','Hair dryer','Iron','Ironing board','Phone','Smoke detector'],
+  'Bathroom':['Toilet','Sink','Vanity','Shower','Bathtub','Shower curtain','Towel bar','Toilet paper holder','Exhaust fan','Bath mat'],
+  'Fixtures':['Ceiling light','Vanity light','Window blinds','Curtains','Curtain rod','Door lock','Deadbolt','Door stop','Outlet covers','Carpet','Vinyl flooring']
+};
+
+/* The property's baseline, as given by management. Loaded once, then owned
+   and edited by the user in Menu → Room standard. */
+const DEFAULT_STANDARD = ['Bed','Microwave','Chair','Trash can','Fridge','TV','TV remote',
+  'Informational folder','Soap holder','Towel holder','Toilet paper holder','Bath mat',
+  'Clean curtains','Working lights','Working AC','Desk x2','Nightstand','Lamp','Alarm clock',
+  'Smoke detector'];
+
+const WORK_PRESETS = ['Deep clean','Paint touch-up','Replace carpet','Fix plumbing leak','Replace light bulbs','Repair drywall','Replace door lock','Service AC unit','Replace linens','Caulk tub','Replace TV remote','Repair furniture'];
+
+/* ---------------- storage ---------------- */
+let db;
+function openDB(){
+  return new Promise((res,rej)=>{
+    if(!('indexedDB' in globalThis) || !indexedDB) return rej(new Error('no indexeddb'));
+    const r = indexedDB.open('roomsurvey',1);
+    const bail=setTimeout(()=>rej(new Error('timeout')),8000);
+    r.onblocked=()=>{clearTimeout(bail);rej(new Error('blocked'))};
+    r.onupgradeneeded = e=>{
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
+      if(!d.objectStoreNames.contains('photos')) d.createObjectStore('photos',{keyPath:'id'});
+    };
+    r.onsuccess = e=>{clearTimeout(bail);db=e.target.result;res()};
+    r.onerror = ()=>{clearTimeout(bail);rej(r.error)};
+  });
+}
+function tx(store,mode){return db.transaction(store,mode).objectStore(store)}
+function idbGet(store,key){return new Promise((res,rej)=>{const q=tx(store,'readonly').get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
+function idbPut(store,val,key){return new Promise((res,rej)=>{const q=key!==undefined?tx(store,'readwrite').put(val,key):tx(store,'readwrite').put(val);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)})}
+function idbDel(store,key){return new Promise((res,rej)=>{const q=tx(store,'readwrite').delete(key);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)})}
+function idbKeys(store){return new Promise((res,rej)=>{const q=tx(store,'readonly').getAllKeys();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error)})}
+function idbAll(store){return new Promise((res,rej)=>{const q=tx(store,'readonly').getAll();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error)})}
+
+/* ---------------- state ---------------- */
+let state = {v:1, rev:0, property:'Home Away Inn', rooms:[], standard:{all:[],byType:{}}, stdSeeded:false, lastBackup:0};
+let currentRoomId = null;
+let filter = 'all';
+let typeFilter = 'all';
+let query = '';
+const thumbURLs = new Map();
+let renderToken = 0;
+
+const uid = ()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+let saveTimer=null;
+let loadOK=false;          // true only after a successful read of existing data
+let deleteIntent=0;        // timestamp of a deliberate delete/restore by the user
+
+/* Two guards live here, and both exist because ten rooms were lost:
+   1. If startup could not read storage, we start blank — writing that blank
+      state would destroy the real data. So we refuse to write at all.
+   2. A jump from several rooms down to none is only ever legitimate right
+      after the user deleted something. Otherwise it is a bug, and we stop. */
+let staleWarned=false;
+/* A restored backup or snapshot carries an old revision (or none at all), so
+   the stale-window guard would refuse to write it. A deliberate restore must
+   supersede whatever is on disk. */
+async function supersede(){
+  try{
+    const prev=await idbGet('kv','state');
+    state.rev=(prev&&Number.isFinite(prev.rev)?prev.rev:0)+1;
+  }catch(e){ state.rev=(Number.isFinite(state.rev)?state.rev:0)+1; }
+  staleWarned=false;
+}
+async function writeState(){
+  if(!loadOK){ return; }
+  try{
+    const prev=await idbGet('kv','state');
+
+    /* Another copy of the app — a second tab, or the home-screen version
+       alongside the browser one — has written since we loaded. Ours is stale
+       and would erase their work. */
+    if(prev && Number.isFinite(prev.rev) && prev.rev > (state.rev||0)){
+      if(!staleWarned){
+        staleWarned=true;
+        alert('Another copy of this app is open and has newer data.\n\nNothing was saved from this window, so the newer data is intact. Close this window and work in the other one, or reload this page to pick up the latest.');
+      }
+      return;
+    }
+
+    /* Rooms vanishing without a delete is a bug, not an instruction. */
+    if(state.rooms.length===0 && prev && Array.isArray(prev.rooms) && prev.rooms.length>0
+       && (Date.now()-deleteIntent>8000)){
+      toast('Blocked an empty save — your rooms are safe. Menu → Recover');
+      return;
+    }
+
+    state.rev=(Number.isFinite(state.rev)?state.rev:0)+1;
+    await idbPut('kv',JSON.parse(JSON.stringify(state)),'state');
+  }catch(e){
+    const full = e && (e.name==='QuotaExceededError'||/quota|storage/i.test(e.message||''));
+    alert(full
+      ? 'Storage is full, so your last change was NOT saved.\n\nFree space by removing photos from finished rooms, or save a backup and start a fresh survey.'
+      : 'Your last change could not be saved. Do not close the app — save a backup from the menu now.');
+  }
+}
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(writeState,250);
+}
+function flushSave(){ clearTimeout(saveTimer); writeState(); }
+
+const SEED_ID='2026-08-20-recovery';
+const SNAP_KEEP=10;
+
+/* One-time recovery load. The rooms rescued on 20 Aug are embedded in this
+   file. They are applied only when storage is completely empty and only once,
+   so nothing that already exists is ever touched. */
+async function applySeed(){
+  const el=document.getElementById('seedData');
+  if(!el) return 0;
+  let seed=null;
+  try{ seed=JSON.parse(el.textContent||'null'); }catch(e){ return 0; }
+  if(!seed||!seed.state||!Array.isArray(seed.state.rooms)||!seed.state.rooms.length) return 0;
+  const incoming=seed.photos||[];
+  let done=0;
+  for(const p of incoming){
+    try{
+      await idbPut('photos',{id:p.id,roomId:p.roomId,ts:p.ts,
+        full:await (await fetch(p.full)).blob(), thumb:await (await fetch(p.thumb)).blob()});
+      done++;
+    }catch(e){}
+    if(done%15===0) toast(`Loading photos… ${done}/${incoming.length}`);
+  }
+  const present=new Set((await idbAll('photos').catch(()=>[])).map(p=>p.id));
+  state=seed.state;
+  normalizeStandard();
+  state.rooms=state.rooms.filter(r=>r&&typeof r==='object').map(r=>{
+    normalizeRoom(r); r.photos=r.photos.filter(id=>present.has(id)); return r; });
+  state.seedApplied=SEED_ID;
+  await supersede();
+  deleteIntent=Date.now();
+  await writeState();
+  await snapshot('recovery load');
+  el.textContent='';                      // free the memory once it is on disk
+  return state.rooms.length;
+}
+async function snapshot(reason){
+  if(!loadOK || !state.rooms.length) return;
+  try{
+    const keys=(await idbKeys('kv')).filter(k=>typeof k==='string'&&k.startsWith('snap:')).sort();
+    const last=keys[keys.length-1];
+    if(last && reason==='auto'){
+      const prev=await idbGet('kv',last);
+      // skip if nothing meaningful changed since the last snapshot
+      if(prev && prev.rooms===state.rooms.length && Date.now()-prev.ts<240000) return;
+    }
+    /* Two snapshots inside the same millisecond would share a key and the
+       second would erase the first. Nudge forward until the key is free. */
+    let ts=Date.now(); const taken=new Set(keys);
+    while(taken.has('snap:'+ts)) ts++;
+    await idbPut('kv',{ts,reason,rooms:state.rooms.length,
+      items:state.rooms.reduce((n,r)=>n+r.inventory.length,0),
+      photos:state.rooms.reduce((n,r)=>n+r.photos.length,0),
+      data:JSON.parse(JSON.stringify(state))},'snap:'+ts);
+    const all=(await idbKeys('kv')).filter(k=>typeof k==='string'&&k.startsWith('snap:')).sort();
+    while(all.length>SNAP_KEEP) await idbDel('kv',all.shift());
+  }catch(e){}
+}
+setInterval(()=>snapshot('auto'),120000);
+window.addEventListener('pagehide',flushSave);
+window.addEventListener('blur',flushSave);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushSave(); });
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('on');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2200);
+}
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const statusLabel = k => (STATUSES.find(s=>s.k===k)||STATUSES[0]).label;
+const room = id => state.rooms.find(r=>r.id===id);
+/* Names typed on a phone pick up stray spaces. Compare on a collapsed key. */
+const nkey = v => String(v==null?'':v).toLowerCase().replace(/\s+/g,' ').trim();
+function typeOptions(cur,blank){
+  const list=[...ROOM_TYPES];
+  if(cur && !list.includes(cur)) list.unshift(cur);
+  return `<option value="">${esc(blank)}</option>`+list.map(t=>`<option ${cur===t?'selected':''}>${esc(t)}</option>`).join('');
+}
+const candidates = ()=>state.rooms.filter(r=>r.upgradeTo);
+
+/* --- room standard: the minimum every room is supposed to have --- */
+function normalizeStandard(){
+  if(!state.standard||typeof state.standard!=='object') state.standard={all:[],byType:{}};
+  if(!Array.isArray(state.standard.all)) state.standard.all=[];
+  if(!state.standard.byType||typeof state.standard.byType!=='object') state.standard.byType={};
+  state.standard.all=state.standard.all.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim());
+  Object.keys(state.standard.byType).forEach(k=>{
+    const v=state.standard.byType[k];
+    state.standard.byType[k]=Array.isArray(v)?v.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim()):[];
+  });
+}
+/* A standard line may carry a required count: "Desk x2", "2x Desk" or "Desk (2)". */
+function parseStdLine(line){
+  let t=String(line).replace(/\s+/g,' ').trim(), qty=1, m;
+  if((m=t.match(/^(\d{1,3})\s*(?:x|×)?\s+(.+)$/i)) && +m[1]>0){ qty=+m[1]; t=m[2]; }
+  else if((m=t.match(/^(.+?)\s*(?:x|×)\s*(\d{1,3})$/i)) && +m[2]>0){ t=m[1]; qty=+m[2]; }
+  else if((m=t.match(/^(.+?)\s*\(\s*(\d{1,3})\s*\)$/)) && +m[2]>0){ t=m[1]; qty=+m[2]; }
+  return {name:t.trim(), qty:Math.min(99,Math.max(1,qty))};
+}
+const stdLine = o => o.qty>1 ? `${o.name} x${o.qty}` : o.name;
+let _reqCache=new Map(), _reqStamp=null;
+function stdStamp(){ return JSON.stringify(state.standard); }
+function requiredFor(r){
+  normalizeStandard();
+  const st=stdStamp();
+  if(st!==_reqStamp){ _reqCache=new Map(); _reqStamp=st; }
+  const key=r.type||'';
+  if(_reqCache.has(key)) return _reqCache.get(key);
+  const out=[], seen=new Set();
+  const add=raw=>{
+    const o=parseStdLine(raw), k=nkey(o.name);
+    if(!k) return;
+    const prev=out.find(x=>nkey(x.name)===k);
+    if(prev){ prev.qty=Math.max(prev.qty,o.qty); return; }   // per-type may raise the count
+    seen.add(k); out.push(o);
+  };
+  if(isGuestRoom(r.type)) state.standard.all.forEach(add);
+  (state.standard.byType[r.type]||[]).forEach(add);
+  _reqCache.set(key,out);
+  return out;
+}
+/* Short if never listed, marked Missing, or fewer than the standard calls for. */
+function missingFor(r){
+  const out=[];
+  requiredFor(r).forEach(req=>{
+    const it=r.inventory.find(i=>nkey(i.name)===nkey(req.name));
+    const have = (!it || it.condition==='Missing') ? 0 : Math.max(0,+it.qty||0);
+    if(have<req.qty) out.push({name:req.name,need:req.qty,have});
+  });
+  return out;
+}
+/* Everything outstanding in a room, as symbol + line. One source of truth for
+   the room card, the combined list, and the board tiles. */
+const TODO_LEGEND=[
+  {sym:'✕',cls:'t-miss',label:'Missing'},
+  {sym:'!',cls:'t-short',label:'Short count'},
+  {sym:'⚙',cls:'t-job',label:'Job to do'},
+  {sym:'◎',cls:'t-photo',label:'No photos'},
+  {sym:'○',cls:'t-open',label:'Not marked complete'}
+];
+function roomTodos(r){
+  const out=[];
+  if(standardIsSet()) missingFor(r).forEach(m=>{
+    out.push(m.have>0
+      ? {sym:'!',cls:'t-short',kind:'short',text:`${m.name} — only ${m.have} of ${m.need}`,name:m.name,need:m.need}
+      : {sym:'✕',cls:'t-miss',kind:'missing',text:m.name,name:m.name,need:m.need});
+  });
+  r.work.filter(w=>w.status!=='complete').forEach(w=>{
+    out.push({sym:'⚙',cls:'t-job',kind:'job',jobId:w.id,
+      text:w.task+(w.status==='progress'?' — in progress':w.status==='needs'?' — needs work':'')});
+  });
+  if(!r.photos.length) out.push({sym:'◎',cls:'t-photo',kind:'photo',text:'No photos taken yet'});
+  if(r.status!=='complete') out.push({sym:'○',cls:'t-open',kind:'status',text:'Room not marked complete'});
+  return out;
+}
+function todoLineHTML(r,t){
+  const R=`data-troom="${r.id}"`;
+  let acts='';
+  if(t.kind==='missing'||t.kind==='short'){
+    acts=`<button class="btn sm" ${R} data-stdpresent="${esc(t.name)}" data-stdqty="${t.need}">${t.need>1?`All ${t.need}`:'Here'}</button>
+          <button class="btn sm danger" ${R} data-stdmissing="${esc(t.name)}">Missing</button>`;
+  } else if(t.kind==='job'){
+    acts=`<button class="btn sm" ${R} data-editwork="${esc(t.jobId)}">Edit</button>
+          <button class="btn sm" ${R} data-workdone="${esc(t.jobId)}">Done</button>`;
+  } else if(t.kind==='photo'){
+    acts=`<button class="btn sm" data-room="${r.id}">Open room</button>`;
+  } else if(t.kind==='status'){
+    acts=`<button class="btn sm" ${R} data-markdone="${r.id}">Mark complete</button>`;
+  }
+  return `<div class="todoline"><i class="sym ${t.cls}">${t.sym}</i>
+    <span class="tx">${esc(t.text)}</span>
+    <span class="acts">${acts}</span></div>`;
+}
+const todoCounts=r=>roomTodos(r).reduce((a,t)=>{a[t.kind]=(a[t.kind]||0)+1;return a},{});
+
+const missLabel = m => m.need>1 ? `${m.name} — ${m.have} of ${m.need}` : m.name;
+/* unchecked | present | short | missing — drives the room panel */
+function standardState(r){
+  return requiredFor(r).map(req=>{
+    const it=r.inventory.find(i=>nkey(i.name)===nkey(req.name));
+    if(!it) return {name:req.name,need:req.qty,have:0,state:'unchecked'};
+    if(it.condition==='Missing'||+it.qty===0) return {name:req.name,need:req.qty,have:0,state:'missing'};
+    const have=Math.max(0,+it.qty||0);
+    return {name:req.name,need:req.qty,have,state:have<req.qty?'short':'present'};
+  });
+}
+const standardIsSet = ()=>{ normalizeStandard();
+  return state.standard.all.length>0 || Object.values(state.standard.byType).some(a=>a.length); };
+
+function sheetStandard(scope){
+  normalizeStandard();
+  scope = scope || '__all__';
+  const list = scope==='__all__' ? state.standard.all : (state.standard.byType[scope]||[]);
+  const opts = [`<option value="__all__">Every guest room (baseline)</option>`]
+    .concat(ROOM_TYPES.map(t=>`<option value="${esc(t)}" ${scope===t?'selected':''}>${isGuestRoom(t)?'Extra for':'Only for'} ${esc(t)}</option>`)).join('');
+  openSheet(`
+    <h3>Room standard</h3>
+    <p class="hint" style="margin-bottom:12px">One item per line. The baseline applies to every guest room; per-type lists add on top of it. ${NON_GUEST.join(' and ')} is exempt from the baseline — only its own list counts, and an empty list means it is never flagged.</p>
+    <label class="f"><span>Editing</span><select id="stdScope">${opts}</select></label>
+    <label class="f"><span>Required items</span><textarea id="stdList" style="min-height:220px" placeholder="Queen bed&#10;TV&#10;TV remote&#10;Mini fridge&#10;Microwave&#10;Nightstand&#10;Table lamp&#10;Shower curtain">${esc(list.join('\n'))}</textarea></label>
+    <div class="btnrow">
+      <button class="btn primary" data-savestd="${esc(scope)}">Save standard</button>
+      <button class="btn" data-close>Cancel</button>
+    </div>
+    <p class="hint">Need more than one? Put the count after the item — <strong>Desk x2</strong>. Paste your whole list at once. Capitalisation and spacing don't matter, but the wording should match what you call the item in rooms — the ★ chips under Quick add use these exact names, so tapping those always matches.</p>
+    ${scope==='__all__'?`<div class="btnrow" style="margin-top:4px"><button class="btn sm" id="stdReset">Restore the original list</button></div>`:(isGuestRoom(scope)
+      ? `<p class="hint">These are <strong>extra</strong> items for ${esc(scope)}, on top of the baseline. A count here can raise the baseline count but never lower it.</p>`
+      : `<p class="hint"><strong>${esc(scope)} is not a guest room</strong>, so the baseline is skipped entirely. Only what you list here is checked. Leave it empty and these rooms are never flagged.</p>`)}
+  `);
+  const sel=document.getElementById('stdScope');
+  sel.value=scope;
+  sel.addEventListener('change',()=>{
+    saveStandard(scope,document.getElementById('stdList').value);
+    sheetStandard(sel.value);
+  });
+}
+function saveStandard(scope,text){
+  normalizeStandard();
+  const list=text.split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean).map(parseStdLine);
+  const seen=new Set(), clean=[];
+  list.forEach(o=>{const k=nkey(o.name); if(k&&!seen.has(k)){seen.add(k);clean.push(stdLine(o))}});
+  if(scope==='__all__') state.standard.all=clean; else state.standard.byType[scope]=clean;
+  save();
+}
+/* Backups written by an older build can be missing fields. Anything that
+   reads a room assumes these exist, so normalise on the way in. */
+function normalizeRoom(r){
+  r.id=r.id||uid();
+  r.number=String(r.number==null?'':r.number);
+  ['type','floor','notes','upgradeTo','upgradeNote'].forEach(k=>{ if(typeof r[k]!=='string') r[k]=''; });
+  if(!STATUSES.some(s=>s.k===r.status)) r.status='notdone';
+  if(!Array.isArray(r.photos)) r.photos=[];
+  if(!Array.isArray(r.inventory)) r.inventory=[]; else r.inventory.forEach(i=>{
+    i.id=i.id||uid(); i.name=String(i.name||'Unnamed item');
+    i.qty=Number.isFinite(+i.qty)?+i.qty:1;
+    if(!CONDITIONS.includes(i.condition)) i.condition='Good';
+    if(typeof i.notes!=='string') i.notes=''; if(typeof i.category!=='string') i.category='';
+  });
+  if(!Array.isArray(r.work)) r.work=[]; else r.work.forEach(w=>{
+    w.id=w.id||uid(); w.task=String(w.task||'Untitled job');
+    if(!STATUSES.some(s=>s.k===w.status)) w.status='notdone';
+    if(typeof w.priority!=='string') w.priority='Normal';
+    if(typeof w.notes!=='string') w.notes='';
+  });
+  if(!Number.isFinite(r.updated)) r.updated=Date.now();
+  if(!Number.isFinite(r.savedAt)) r.savedAt=0;
+  return r;
+}
+
+/* ---------------- photo handling ---------------- */
+function fileToImage(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.decoding='sync';
+    img.onload=()=>{URL.revokeObjectURL(url);res(img)};
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('decode failed'))};
+    img.src=url;
+  });
+}
+/* Encode a source (ImageBitmap or HTMLImageElement) down to a JPEG blob.
+   Steps down in halves first: iOS silently produces blank canvases when
+   drawing a very large image straight to a small one. */
+function encode(src,max,quality){
+  let w=src.width, h=src.height;
+  if(!w||!h) return Promise.resolve(null);
+  const scale=Math.min(1,max/Math.max(w,h));
+  let tw=Math.max(1,Math.round(w*scale)), th=Math.max(1,Math.round(h*scale));
+  let canvas=document.createElement('canvas');
+  let cur=src, cw=w, ch=h;
+  while(cw>tw*2 && ch>th*2){
+    const nw=Math.max(tw,Math.round(cw/2)), nh=Math.max(th,Math.round(ch/2));
+    const step=document.createElement('canvas');
+    step.width=nw; step.height=nh;
+    const sctx=step.getContext('2d');
+    sctx.imageSmoothingQuality='high';
+    sctx.drawImage(cur,0,0,nw,nh);
+    cur=step; cw=nw; ch=nh;
+  }
+  canvas.width=tw; canvas.height=th;
+  const ctx=canvas.getContext('2d');
+  ctx.imageSmoothingQuality='high';
+  ctx.drawImage(cur,0,0,tw,th);
+  return new Promise(res=>{
+    try{ canvas.toBlob(b=>res(b&&b.size>0?b:null),'image/jpeg',quality); }
+    catch(e){ res(null); }
+  });
+}
+/* Prefer createImageBitmap: it decodes off the canvas path, which avoids the
+   iOS pixel ceiling on 48MP photos, and honours EXIF rotation explicitly. */
+async function decodeSource(file){
+  if(typeof createImageBitmap==='function'){
+    try{ return await createImageBitmap(file,{imageOrientation:'from-image'}); }
+    catch(e){ /* fall through — Safari lacks the options arg on older versions */ }
+    try{ return await createImageBitmap(file); }
+    catch(e){}
+  }
+  return await fileToImage(file);
+}
+async function addPhotos(roomId,files){
+  const r=room(roomId); if(!r) return;
+  if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+  let added=0, skipped=0, quota=false, decodeFail=0;
+  for(const f of files){
+    if(r.photos.length>=MAX_PHOTOS){skipped++;continue}
+    if(f.type && !/^image\//.test(f.type)){skipped++;continue}
+    let src=null;
+    try{
+      src=await decodeSource(f);
+      const full=await encode(src,1500,.72);
+      const thumb=await encode(src,340,.6);
+      if(!full||!thumb){ decodeFail++; skipped++; continue; }
+      const id=uid();
+      await idbPut('photos',{id,roomId,full,thumb,ts:Date.now()});
+      r.photos.push(id); added++;
+    }catch(e){
+      if(e&&(e.name==='QuotaExceededError'||/quota/i.test(e.message||''))) quota=true;
+      else decodeFail++;
+      skipped++;
+    }finally{
+      if(src&&src.close) src.close();
+    }
+  }
+  r.updated=Date.now(); save(); renderRoom();
+  if(quota) toast('Storage is full — save a backup, then remove some photos');
+  else if(added) toast(`${added} photo${added>1?'s':''} added${skipped?` · ${skipped} skipped`:''}`);
+  else if(decodeFail) toast("Couldn't read that photo — try shooting it again");
+  else toast(`Limit is ${MAX_PHOTOS} photos per room`);
+}
+async function thumbURL(id){
+  if(thumbURLs.has(id)) return thumbURLs.get(id);
+  const p=await idbGet('photos',id); if(!p) return '';
+  const u=URL.createObjectURL(p.thumb); thumbURLs.set(id,u); return u;
+}
+async function removePhoto(roomId,photoId){
+  const r=room(roomId); if(!r) return;
+  r.photos=r.photos.filter(p=>p!==photoId);
+  await idbDel('photos',photoId);
+  if(thumbURLs.has(photoId)){URL.revokeObjectURL(thumbURLs.get(photoId));thumbURLs.delete(photoId)}
+  r.updated=Date.now(); save(); renderRoom();
+}
+
+/* ---------------- board ---------------- */
+function counts(){
+  const c={all:state.rooms.length,notdone:0,progress:0,needs:0,complete:0};
+  state.rooms.forEach(r=>c[r.status]!==undefined&&c[r.status]++);
+  return c;
+}
+function renderStrip(){
+  const c=counts();
+  const cells=[
+    {k:'all',n:c.all,l:'All rooms'},
+    {k:'notdone',n:c.notdone,l:'Not done'},
+    {k:'progress',n:c.progress,l:'In progress'},
+    {k:'needs',n:c.needs,l:'Needs work'},
+    {k:'complete',n:c.complete,l:'Complete'}
+  ];
+  document.getElementById('strip').innerHTML = cells.map(x=>
+    `<button data-filter="${x.k}" aria-pressed="${filter===x.k}">
+       <span class="n">${x.n}</span><span class="l">${x.l}</span>
+     </button>`).join('') ;
+}
+function visibleRooms(){
+  const q=query.trim().toLowerCase();
+  return state.rooms.filter(r=>{
+    if(filter!=='all' && r.status!==filter) return false;
+    if(typeFilter==='__below__'){ if(!missingFor(r).length) return false; }
+    else if(typeFilter==='__up__'){ if(!r.upgradeTo) return false; }
+    else if(typeFilter==='__none__'){ if(r.type) return false; }
+    else if(typeFilter!=='all' && r.type!==typeFilter) return false;
+    if(!q) return true;
+    const hay=[r.number,r.type,r.floor,r.notes,...r.inventory.map(i=>i.name),...r.work.map(w=>w.task)].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+}
+function clearFilters(){
+  filter='all'; typeFilter='all'; query='';
+  const sb=document.getElementById('search'); if(sb) sb.value='';
+}
+function renderTypeFilter(){
+  const el=document.getElementById('typeFilter');
+  const counts={};
+  state.rooms.forEach(r=>{const k=r.type||'__none__';counts[k]=(counts[k]||0)+1});
+  const up=candidates().length;
+  const opts=[`<option value="all">All types (${state.rooms.length})</option>`];
+  ROOM_TYPES.forEach(t=>opts.push(`<option value="${esc(t)}">${esc(t)} (${counts[t]||0})</option>`));
+  Object.keys(counts).forEach(k=>{ if(k!=='__none__' && !ROOM_TYPES.includes(k)) opts.push(`<option value="${esc(k)}">${esc(k)} (${counts[k]})</option>`); });
+  opts.push(`<option value="__none__">Not classified (${counts.__none__||0})</option>`);
+  opts.push(`<option value="__up__">↑ Upgrade candidates (${up})</option>`);
+  if(standardIsSet()) opts.push(`<option value="__below__">Below standard (${state.rooms.filter(r=>missingFor(r).length).length})</option>`);
+  el.innerHTML=opts.join('');
+  el.value=typeFilter;
+  if(el.value!==typeFilter){ typeFilter='all'; el.value='all'; }
+}
+function renderBoard(){
+  renderStrip();
+  renderTypeFilter();
+  const list=visibleRooms();
+  const el=document.getElementById('board');
+  document.getElementById('boardEmpty').classList.toggle('hidden',state.rooms.length>0);
+  if(state.rooms.length && !list.length){
+    el.innerHTML=`<div class="empty" style="grid-column:1/-1">No rooms match that filter.</div>`;
+    return;
+  }
+  el.innerHTML=list.map(r=>{
+    const open=r.work.filter(w=>w.status!=='complete').length;
+    const tc=todoCounts(r);
+    return `<button class="tile b-${r.status}" data-room="${r.id}">
+
+      <div>
+        <div class="num">${esc(r.number)}</div>
+        <div class="ty">${r.upgradeTo?'<strong style="color:var(--progress)">↑ </strong>':''}${esc(r.type||'Not classified')}</div>
+        <div class="tilesyms">
+        ${tc.missing?`<span class="s t-miss">✕${tc.missing}</span>`:''}
+        ${tc.short?`<span class="s t-short">!${tc.short}</span>`:''}
+        ${tc.job?`<span class="s t-job">⚙${tc.job}</span>`:''}
+        ${tc.photo?`<span class="s t-photo">◎</span>`:''}
+        ${!tc.missing&&!tc.short&&!tc.job&&!tc.photo&&!tc.status?`<span class="s" style="background:#eaf5f0;color:#155e46">✓ done</span>`:''}
+      </div>
+      </div>
+      <div class="meta"><span class="dot s-${r.status}"></span>${r.inventory.length} items · ${r.photos.length}📷</div>
+    </button>`;
+  }).join('');
+
+  const shown=list.length, total=state.rooms.length;
+  const fb=document.getElementById('filterBar');
+  if(total && shown<total){
+    fb.innerHTML=`Showing <strong>${shown}</strong> of <strong>${total}</strong> rooms — a filter is on.
+      <button class="btn sm" id="showAll" style="margin-left:8px">Show all ${total}</button>`;
+    fb.classList.remove('hidden');
+  } else fb.classList.add('hidden');
+
+  const days=(Date.now()-(state.lastBackup||0))/86400000;
+  const never=!state.lastBackup;
+  const work=state.rooms.reduce((n,r)=>n+r.inventory.length+r.photos.length,0);
+  const warn=document.getElementById('backupWarn');
+  if(warn.dataset.seeded==='1') return;
+  const due = (never && work>=15) || (state.rooms.length>3 && days>3);
+  warn.classList.toggle('hidden', !due);
+  if(due) warn.innerHTML = never
+    ? `<strong>You have unsaved work only on this phone.</strong> Menu → Save backup file writes a copy you can put in Drive. Do it now — it takes ten seconds.`
+    : `Last backup was ${Math.floor(days)} days ago. Menu → <strong>Save backup file</strong>.`;
+}
+
+/* ---------------- room detail ---------------- */
+function statusCycleBtn(cur,attr){
+  return `<button class="statusbtn v-${cur}" ${attr}><span class="dot s-${cur}"></span>${statusLabel(cur)}</button>`;
+}
+function nextStatus(k){const i=STATUSES.findIndex(s=>s.k===k);return STATUSES[(i+1)%STATUSES.length].k}
+
+function renderRoom(){
+  const r=room(currentRoomId); if(!r){showBoard();return}
+  document.getElementById('title').innerHTML=`Room ${esc(r.number)}<span class="sub">${esc(r.type||'No type set')}</span>`;
+
+  const openWork=r.work.filter(w=>w.status!=='complete').length;
+
+  const todos=roomTodos(r);
+  document.getElementById('roomView').innerHTML=`
+    ${todos.length?`<div class="card">
+      <h2>To-do for this room <span class="counter">${todos.length}</span></h2>
+      <div class="body">
+        ${todos.map(t=>todoLineHTML(r,t)).join('')}
+      </div>
+    </div>`:`<div class="card"><div class="body" style="display:flex;align-items:center;gap:9px">
+      <i class="sym" style="background:#eaf5f0;color:#155e46;border:1px solid #a6cfc0">✓</i>
+      <span style="font-size:14px;font-weight:600">Nothing outstanding in this room</span></div></div>`}
+
+    <div class="card">
+      <h2>Room status <span class="counter">${r.updated?'Updated '+new Date(r.updated).toLocaleDateString():'New'}</span></h2>
+      <div class="body">
+        <div class="btnrow" style="margin-bottom:12px">
+          ${STATUSES.map(s=>`<button class="statusbtn ${r.status===s.k?'v-'+s.k:''}" data-roomstatus="${s.k}"><span class="dot s-${s.k}"></span>${s.label}</button>`).join('')}
+        </div>
+        <div class="grid2">
+          <label class="f"><span>Room number</span><input type="text" id="rNumber" value="${esc(r.number)}" autocomplete="off"></label>
+          <label class="f"><span>Floor / building</span><input type="text" id="rFloor" value="${esc(r.floor)}" placeholder="e.g. 2nd"></label>
+        </div>
+        <label class="f"><span>Room type</span><select id="rType">${typeOptions(r.type,'Not classified')}</select></label>
+        <label class="f" style="margin-bottom:0"><span>Room notes</span><textarea id="rNotes" placeholder="Anything the owners should know about this room">${esc(r.notes)}</textarea></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Upgrade potential ${r.upgradeTo?'<span class="chip"><span class="dot s-progress"></span>Candidate</span>':''}</h2>
+      <div class="body">
+        <label class="f"><span>Could be re-classified as</span><select id="rUpgrade">${typeOptions(r.upgradeTo,'No — current type is right')}</select></label>
+        <label class="f" style="margin-bottom:0"><span>What's holding it back</span><textarea id="rUpNote" placeholder="Carpet, bathroom fan, mismatched furniture…">${esc(r.upgradeNote||'')}</textarea></label>
+        <p class="hint">Pick a target type and this room lands on the Upgrade Opportunities sheet for the owners, with the jobs below attached.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Photos <span class="counter">${r.photos.length} / ${MAX_PHOTOS}</span></h2>
+      <div class="body">
+        <div class="btnrow" style="margin-bottom:${r.photos.length?'11px':'0'}">
+          <button class="btn sm" id="camBtn">Take photo</button>
+          <button class="btn sm" id="libBtn">Choose photos</button>
+        </div>
+        <div class="photos" id="photoGrid"></div>
+      </div>
+    </div>
+
+    ${(()=>{ if(!standardIsSet()) return '';
+      const st=standardState(r);
+      if(!st.length) return `<div class="card"><h2>Against room standard <span class="counter">not applicable</span></h2>
+        <div class="body"><p class="hint" style="margin:0">${isGuestRoom(r.type)
+          ? 'No standard set for this room type yet.'
+          : `${esc(r.type)} is exempt from the guest-room standard. Add items under Menu → Room standard if you want it checked.`}</p></div></div>`;
+      const gone=st.filter(x=>x.state==='missing').length;
+      const shortN=st.filter(x=>x.state==='short').length;
+      const todo=st.filter(x=>x.state==='unchecked').length;
+      const bits=[];
+      if(todo) bits.push(todo+' to check');
+      if(gone) bits.push(gone+' missing');
+      if(shortN) bits.push(shortN+' short');
+      const word={unchecked:'Not checked',present:'Here',short:'Short',missing:'Missing'};
+      return `<div class="card">
+        <h2>Against room standard <span class="counter">${bits.length?bits.join(' · '):'all present'}</span></h2>
+        <div class="body">
+          <div class="btnrow" style="margin-bottom:11px">
+            ${todo?`<button class="btn sm" id="allPresent">Mark remaining ${todo} present</button>`:''}
+            <button class="btn sm" id="resetChecks">Clear all checks</button>
+          </div>
+          <p class="hint" style="margin:0 0 10px">Anything already marked Missing stays marked — the bulk button only fills in what you haven't looked at yet.</p>
+          ${st.map(x=>`<div class="stdrow st-${x.state}">
+            <span class="nm">${esc(x.name)}${x.need>1?` <span class="need">${x.have} of ${x.need}</span>`:''}
+              <span class="tag t-${x.state}">${word[x.state]}</span></span>
+            <span class="bs">
+              <button class="btn sm ${(x.state==='present'||x.state==='short')?'pick':''}" data-stdpresent="${esc(x.name)}" data-stdqty="${x.need}">${x.need>1?`All ${x.need}`:'Here'}</button>
+              <button class="btn sm ${x.state==='missing'?'pickbad':''}" data-stdmissing="${esc(x.name)}">Missing</button>
+            </span></div>`).join('')}
+        </div>
+      </div>`; })()}
+
+    <div class="card">
+      <h2>What's in the room <span class="counter">${r.inventory.length}</span></h2>
+      <div class="body">
+        <div class="btnrow">
+          <button class="btn sm" id="quickAdd">Quick add items</button>
+          <button class="btn sm" id="customItem">Add custom item</button>
+          <button class="btn sm" id="copyRoom">Copy from room</button>
+        </div>
+      </div>
+      <div class="body tight" id="invList"></div>
+    </div>
+
+    <div class="card">
+      <h2>What needs to be done <span class="counter">${openWork} open</span></h2>
+      <div class="body">
+        <div class="btnrow">
+          <button class="btn sm" id="quickWork">Common jobs</button>
+          <button class="btn sm" id="customWork">Add custom job</button>
+        </div>
+      </div>
+      <div class="body tight" id="workList"></div>
+    </div>
+
+    ${(()=>{ const nb=roomNeighbours(r.id); return `<div class="card"><div class="body">
+      <div class="navrow">
+        ${nb.prev?`<button class="btn" data-gotoroom="${nb.prev.id}">‹ ${esc(nb.prev.number)}</button>`:'<span></span>'}
+        <span class="pos">${nb.index+1} of ${nb.total}</span>
+        ${nb.next?`<button class="btn" data-gotoroom="${nb.next.id}">${esc(nb.next.number)} ›</button>`:'<span></span>'}
+      </div>
+    </div></div>`; })()}
+
+    <div class="card">
+      <div class="body">
+        <button class="btn danger full" id="delRoom">Delete room ${esc(r.number)}</button>
+      </div>
+    </div>
+  `;
+
+  /* inventory rows */
+  const inv=document.getElementById('invList');
+  inv.innerHTML = r.inventory.length ? r.inventory.map(i=>`
+    <div class="row">
+      <div class="main">
+        <div class="name">${esc(i.name)}</div>
+        <div class="qline">
+          <button class="qbtn" data-qtydown="${i.id}" aria-label="One fewer">−</button>
+          <span class="q">${i.qty}</span>
+          <button class="qbtn" data-qtyup="${i.id}" aria-label="One more">+</button>
+          <button class="condbtn c-${esc(i.condition)}" data-cond="${i.id}">${esc(i.condition)}</button>
+        </div>
+        ${i.notes?`<div class="note">${esc(i.notes)}</div>`:''}
+      </div>
+      <button class="btn sm" data-edititem="${i.id}">Edit</button>
+    </div>`).join('')
+    : `<div class="empty">Nothing listed yet. Tap <strong>Quick add items</strong> to stamp in the usual furniture and fixtures, then edit what's different.</div>`;
+
+  /* work rows */
+  const wl=document.getElementById('workList');
+  wl.innerHTML = r.work.length ? r.work.map(w=>`
+    <div class="row">
+      <div class="main">
+        <div class="name">${esc(w.task)}</div>
+        ${w.notes?`<div class="note">${esc(w.notes)}</div>`:''}
+        <div class="sub">${w.priority?esc(w.priority)+' priority':''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        ${statusCycleBtn(w.status,`data-workstatus="${w.id}"`)}
+        <button class="btn sm" data-editwork="${w.id}">Edit</button>
+      </div>
+    </div>`).join('')
+    : `<div class="empty">No jobs logged. Tap <strong>Common jobs</strong> or add your own.</div>`;
+
+  renderSaveBar();
+
+  /* photos */
+  const pg=document.getElementById('photoGrid');
+  const token=++renderToken;
+  pg.innerHTML='';
+  (async()=>{
+    const urls=[];
+    for(const pid of r.photos) urls.push([pid,await thumbURL(pid)]);
+    if(token!==renderToken) return;          // a newer render started — drop this one
+    pg.innerHTML=urls.map(([pid,u])=>u
+      ? `<div class="ph"><img src="${u}" alt="Photo of room ${esc(r.number)}" data-view="${pid}"><button class="x" data-delphoto="${pid}" aria-label="Delete photo">×</button></div>`
+      : '').join('');
+  })();
+}
+
+function renderSaveBar(){
+  const r=room(currentRoomId); if(!r) return;
+  const bar=document.getElementById('saveBar'), msg=document.getElementById('saveMsg');
+  const dirty=(r.updated||0)>(r.savedAt||0);
+  const t=ms=>new Date(ms).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+  bar.classList.toggle('dirty',dirty);
+  bar.classList.toggle('clean',!dirty);
+  msg.innerHTML = dirty
+    ? `<strong>Unsaved changes</strong>${r.savedAt?'Last saved '+t(r.savedAt):'Never saved'}`
+    : `<strong>Saved ${r.savedAt?t(r.savedAt):''}</strong>Checked on disk`;
+}
+
+/* Writes, then reads the data back off the disk and checks it matches.
+   A save that only claims success is what lost the rooms the first time. */
+async function saveRoomNow(){
+  const r=room(currentRoomId); if(!r) return;
+  const btn=document.getElementById('saveRoom');
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    r.savedAt=Date.now();
+    clearTimeout(saveTimer);
+    await writeState();
+    const stored=await idbGet('kv','state');
+    const back=stored&&Array.isArray(stored.rooms)?stored.rooms.find(x=>x.id===r.id):null;
+    const good = !!back
+      && back.inventory.length===r.inventory.length
+      && back.work.length===r.work.length
+      && back.photos.length===r.photos.length
+      && String(back.number)===String(r.number);
+    if(good){
+      await snapshot('room '+r.number);
+      toast(`Room ${r.number} saved · ${r.inventory.length} items, ${r.photos.length} photos`);
+      syncNow(true);
+    }else{
+      r.savedAt=0;
+      alert(`Room ${r.number} did NOT save.\n\nIt was written but could not be read back, so do not close the app.\n\nOpen the menu, save a backup file now, then reload the page.`);
+    }
+  }catch(e){
+    r.savedAt=0;
+    alert(`Room ${r.number} did NOT save.\n\nSave a backup file from the menu before closing the app.`);
+  }
+  btn.disabled=false; btn.textContent='Save room';
+  renderRoom();
+}
+
+/* Walk order follows what the board is showing, so a filtered pass moves
+   through just those rooms. */
+function roomNeighbours(id){
+  let list=visibleRooms();
+  if(!list.some(r=>r.id===id)) list=state.rooms;
+  const i=list.findIndex(r=>r.id===id);
+  return {prev:i>0?list[i-1]:null, next:(i>=0&&i<list.length-1)?list[i+1]:null,
+          index:i<0?0:i, total:list.length};
+}
+function inTodo(){ return !document.getElementById('todoView').classList.contains('hidden'); }
+function refresh(){
+  if(inTodo()) renderTodo();
+  else if(currentRoomId) renderRoom();
+  else renderBoard();
+}
+function renderTodo(){
+  const groups=state.rooms.map(r=>({r,list:roomTodos(r)})).filter(g=>g.list.length);
+  const total=groups.reduce((n,g)=>n+g.list.length,0);
+  const tally={};
+  groups.forEach(g=>g.list.forEach(t=>{tally[t.kind]=(tally[t.kind]||0)+1}));
+  const done=state.rooms.length-groups.length;
+
+  document.getElementById('todoView').innerHTML=`
+    <div class="card">
+      <h2>Everything outstanding <span class="counter">${total} items · ${groups.length} rooms</span></h2>
+      <div class="body">
+        <div class="legend">
+          ${TODO_LEGEND.map(l=>`<span><i class="sym ${l.cls}">${l.sym}</i>${l.label}</span>`).join('')}
+        </div>
+        <div style="font-family:var(--mono);font-size:12.5px;color:var(--muted);line-height:1.8">
+          ${tally.missing?`<span class="sym t-miss" style="width:18px;height:18px;font-size:11px">✕</span> ${tally.missing} missing items<br>`:''}
+          ${tally.short?`<span class="sym t-short" style="width:18px;height:18px;font-size:11px">!</span> ${tally.short} short counts<br>`:''}
+          ${tally.job?`<span class="sym t-job" style="width:18px;height:18px;font-size:11px">⚙</span> ${tally.job} open jobs<br>`:''}
+          ${tally.photo?`<span class="sym t-photo" style="width:18px;height:18px;font-size:11px">◎</span> ${tally.photo} rooms with no photos<br>`:''}
+          ${tally.status?`<span class="sym t-open" style="width:18px;height:18px;font-size:11px">○</span> ${tally.status} rooms not marked complete<br>`:''}
+          ${done?`<br>${done} room${done===1?'':'s'} fully done`:''}
+        </div>
+      </div>
+    </div>
+    ${groups.length? groups.map(g=>`
+      <div class="card">
+        <button class="todohead" data-room="${g.r.id}">
+          <span class="rn">${esc(g.r.number)}</span>
+          <span class="rt">${esc(g.r.type||'Not classified')}</span>
+          <span class="cnt">${g.list.length}</span>
+          <span style="color:var(--muted)">›</span>
+        </button>
+        <div class="body">
+          ${g.list.map(t=>todoLineHTML(g.r,t)).join('')}
+          <div class="btnrow" style="margin-top:10px">
+            <button class="btn sm" data-troom="${g.r.id}" data-addhere="1">Add an item</button>
+            <button class="btn sm" data-troom="${g.r.id}" data-addjob="1">Add a job</button>
+            <button class="btn sm" data-room="${g.r.id}">Open room</button>
+          </div>
+        </div>
+      </div>`).join('')
+    : `<div class="card"><div class="empty">Nothing outstanding. Every room is complete, photographed, and meets the standard.</div></div>`}
+  `;
+}
+function showTodo(){
+  currentRoomId=null;
+  document.body.classList.remove('inroom');
+  document.getElementById('saveBar').style.display='none';
+  document.getElementById('boardView').classList.add('hidden');
+  document.getElementById('roomView').classList.add('hidden');
+  document.getElementById('todoView').classList.remove('hidden');
+  document.getElementById('backBtn').style.display='';
+  document.getElementById('todoBtn').style.display='none';
+  document.getElementById('fab').style.display='none';
+  document.getElementById('title').innerHTML=`To-do<span class="sub">All rooms</span>`;
+  renderTodo();
+  window.scrollTo(0,0);
+}
+
+/* ================= shared sync =================
+   The server holds one copy per room. On open we pull anything newer,
+   merge it into what is here, then push anything of ours that is newer.
+   Everything still works with sync switched off or unreachable. */
+const API='/api/sync';
+let syncState={on:true,busy:false,last:0,err:'',rooms:0,photos:0};
+
+async function api(action,opts={}){
+  const u=`${API}?action=${encodeURIComponent(action)}`+(opts.id?`&id=${encodeURIComponent(opts.id)}`:'');
+  const res=await fetch(u,{
+    method:opts.body?'POST':(opts.method||'GET'),
+    headers:opts.body?{'content-type':'application/json'}:undefined,
+    body:opts.body?JSON.stringify(opts.body):undefined
+  });
+  const data=await res.json().catch(()=>({ok:false,error:'bad response'}));
+  return {status:res.status,data};
+}
+
+async function pushRoom(r){
+  let attempt=0;
+  while(attempt++<3){
+    const send=JSON.parse(JSON.stringify(r));
+    delete send.savedAt;
+    const {status,data}=await api('room',{body:{room:send,baseRev:r.rev||0}});
+    if(status===200){ r.rev=data.rev; return true; }
+    if(status===409 && data.room){
+      const {room:merged}=mergeRooms(r,normalizeRoom(data.room));   // union, nothing lost
+      merged.rev=data.room.rev;
+      merged.updated=Math.max(merged.updated||0,(data.room.updated||0)+1);
+      const i=state.rooms.findIndex(x=>x.id===r.id);
+      if(i>=0) state.rooms[i]=merged;
+      r=merged;
+      continue;
+    }
+    return false;
+  }
+  return false;
+}
+
+async function syncNow(quiet){
+  if(!syncState.on||syncState.busy) return;
+  syncState.busy=true; syncState.err=''; renderSyncChip();
+  let pulled=0, pushed=0, upPhotos=0, downPhotos=0;
+  /* A room we merged locally now differs from BOTH copies, so it has to go
+     back up — otherwise the other phone never sees the combined version. */
+  const dirty=new Set();
+  try{
+    const {status,data}=await api('manifest');
+    if(status!==200||!data.ok) throw new Error(data.error||'server not reachable');
+
+    /* pull rooms that are new or newer than ours */
+    for(const [id,info] of Object.entries(data.rooms||{})){
+      const mine=state.rooms.find(x=>x.id===id);
+      if(mine && (mine.rev||0)>=(info.rev||0) && (mine.updated||0)>=(info.updated||0)) continue;
+      const got=await api('room',{id});
+      if(got.status!==200||!got.data.room) continue;
+      const theirs=normalizeRoom(got.data.room);
+      if(!mine){ state.rooms.push(theirs); pulled++; }
+      else{
+        const {room:merged}=mergeRooms(mine,theirs);
+        merged.rev=theirs.rev||0;
+        if(merged.inventory.length!==theirs.inventory.length
+          || merged.work.length!==theirs.work.length
+          || merged.photos.length!==theirs.photos.length
+          || (merged.notes||'')!==(theirs.notes||'')) dirty.add(merged.id);
+        state.rooms[state.rooms.indexOf(mine)]=merged;
+        pulled++;
+      }
+    }
+
+    /* push ours that the server has not got, or that we changed since */
+    for(const r of state.rooms){
+      const info=(data.rooms||{})[r.id];
+      if(!dirty.has(r.id) && info
+         && (info.updated||0)>=(r.updated||0) && (info.rev||0)>=(r.rev||0)) continue;
+      if(await pushRoom(r)) pushed++;
+    }
+
+    /* photos: upload ours, fetch theirs */
+    const there=new Set(data.photos||[]);
+    const localPhotos=await idbAll('photos').catch(()=>[]);
+    const localIds=new Set(localPhotos.map(p=>p.id));
+    for(const p of localPhotos){
+      if(there.has(p.id)) continue;
+      try{
+        await api('photo',{body:{id:p.id,roomId:p.roomId,ts:p.ts,
+          full:await blobToDataURL(p.full), thumb:await blobToDataURL(p.thumb)}});
+        upPhotos++;
+      }catch(e){}
+      if(upPhotos%10===0&&upPhotos) toast(`Uploading photos… ${upPhotos}`);
+    }
+    const wanted=new Set(state.rooms.flatMap(r=>r.photos));
+    for(const id of wanted){
+      if(localIds.has(id)||!there.has(id)) continue;
+      const got=await api('photo',{id});
+      if(got.status!==200||!got.data.photo) continue;
+      const p=got.data.photo;
+      try{
+        await idbPut('photos',{id:p.id,roomId:p.roomId,ts:p.ts,
+          full:await (await fetch(p.full)).blob(), thumb:await (await fetch(p.thumb||p.full)).blob()});
+        downPhotos++;
+      }catch(e){}
+      if(downPhotos%10===0) toast(`Downloading photos… ${downPhotos}`);
+    }
+
+    /* the room standard travels with the survey */
+    normalizeStandard();
+    const localMeta={property:state.property,standard:state.standard,updated:state.standardUpdated||0};
+    if(data.meta && (data.meta.updated||0)>(localMeta.updated||0)){
+      state.standard=data.meta.standard||state.standard;
+      state.property=data.meta.property||state.property;
+      state.standardUpdated=data.meta.updated||0;
+      normalizeStandard();
+    } else if(!data.meta || (localMeta.updated||0)>(data.meta.updated||0)){
+      await api('meta',{body:localMeta});
+    }
+
+    state.rooms.sort((a,b)=>String(a.number).localeCompare(String(b.number),undefined,{numeric:true}));
+    const present=new Set((await idbAll('photos')).map(p=>p.id));
+    state.rooms.forEach(r=>{ r.photos=r.photos.filter(id=>present.has(id)); });
+    await supersede(); deleteIntent=Date.now(); await writeState();
+    syncState.last=Date.now(); syncState.rooms=state.rooms.length;
+    if(!quiet) toast(`Synced · ${pulled} in, ${pushed} out${upPhotos||downPhotos?` · ${upPhotos}↑ ${downPhotos}↓ photos`:''}`);
+    refresh();
+  }catch(e){
+    syncState.err=String(e&&e.message||e);
+    if(!quiet) toast('Sync failed — working offline. '+syncState.err);
+  }
+  syncState.busy=false; renderSyncChip();
+}
+
+function renderSyncChip(){
+  const el=document.getElementById('syncBtn');
+  if(!el) return;
+  el.textContent = syncState.busy ? 'Syncing…'
+    : syncState.err ? 'Offline'
+    : syncState.last ? 'Synced' : 'Sync';
+  el.style.opacity = syncState.busy ? '.6' : '1';
+}
+
+/* ---------------- views ---------------- */
+function showBoard(){
+  currentRoomId=null;
+  document.body.classList.remove('inroom');
+  document.getElementById('saveBar').style.display='none';
+  document.getElementById('todoView').classList.add('hidden');
+  document.getElementById('todoBtn').style.display='';
+  document.getElementById('boardView').classList.remove('hidden');
+  document.getElementById('roomView').classList.add('hidden');
+  document.getElementById('backBtn').style.display='none';
+  document.getElementById('fab').style.display='';
+  document.getElementById('title').innerHTML=`Room Survey<span class="sub">${esc(state.property)}</span>`;
+  state.rooms.sort((a,b)=>a.number.localeCompare(b.number,undefined,{numeric:true}));
+  renderBoard();
+  window.scrollTo(0,0);
+}
+function showRoom(id){
+  currentRoomId=id;
+  document.getElementById('todoView').classList.add('hidden');
+  document.getElementById('todoBtn').style.display='none';
+  document.body.classList.add('inroom');
+  document.getElementById('saveBar').style.display='flex';
+  document.getElementById('boardView').classList.add('hidden');
+  document.getElementById('roomView').classList.remove('hidden');
+  document.getElementById('backBtn').style.display='';
+  document.getElementById('fab').style.display='none';
+  renderRoom();
+  window.scrollTo(0,0);
+}
+
+/* ---------------- sheet ---------------- */
+function openSheet(html){
+  document.getElementById('sheetBody').innerHTML=html;
+  document.getElementById('sheet').classList.add('on');
+  document.getElementById('scrim').classList.add('on');
+}
+function closeSheet(){
+  document.getElementById('sheet').classList.remove('on');
+  document.getElementById('scrim').classList.remove('on');
+}
+
+/* ---------------- add rooms ---------------- */
+function sheetAddRooms(){
+  openSheet(`
+    <h3>Add rooms</h3>
+    <label class="f"><span>Room numbers</span>
+      <input type="text" id="roomInput" placeholder="101-125, 201-225, Office" autocomplete="off">
+    </label>
+    <p class="hint">Use ranges like <strong>101-125</strong>, single numbers, or names. Separate with commas. Duplicates are skipped.</p>
+    <label class="f" style="margin-top:12px"><span>Room type (optional, applies to all)</span>
+      <select id="typeInput">${typeOptions('','Leave blank — set per room')}</select>
+    </label>
+    <div class="btnrow" style="margin-top:6px">
+      <button class="btn primary" id="doAddRooms">Add rooms</button>
+      <button class="btn" data-close>Cancel</button>
+    </div>
+  `);
+}
+function parseRooms(str){
+  const out=[];
+  str.split(',').map(s=>s.trim()).filter(Boolean).forEach(part=>{
+    const m=part.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+    if(m){
+      let a=parseInt(m[1],10),b=parseInt(m[2],10);
+      if(a>b)[a,b]=[b,a];
+      if(b-a>400)b=a+400;
+      for(let i=a;i<=b;i++) out.push(String(i));
+    } else out.push(part);
+  });
+  return out;
+}
+function addRooms(str,type){
+  const names=parseRooms(str);
+  const have=new Set(state.rooms.map(r=>nkey(r.number)));
+  let n=0;
+  names.forEach(name=>{
+    if(have.has(nkey(name))) return;
+    have.add(nkey(name));
+    state.rooms.push({id:uid(),number:name,type:type||'',floor:'',status:'notdone',notes:'',upgradeTo:'',upgradeNote:'',inventory:[],work:[],photos:[],updated:Date.now()});
+    n++;
+  });
+  state.rooms.sort((a,b)=>a.number.localeCompare(b.number,undefined,{numeric:true}));
+  save(); renderBoard();
+  toast(n?`${n} room${n>1?'s':''} added`:'Those rooms already exist');
+}
+
+/* ---------------- item sheets ---------------- */
+function sheetQuickAdd(){
+  const r=room(currentRoomId);
+  const have=new Set(r.inventory.map(i=>nkey(i.name)));
+  const reqList=requiredFor(r);
+  const req=new Set(reqList.map(x=>nkey(x.name)));
+  const extra=reqList.map(x=>x.name).filter(x=>!Object.values(CATALOG).flat().some(y=>nkey(y)===nkey(x)));
+  let html=`<h3>Quick add items</h3><p class="hint" style="margin-bottom:10px">Tap to add, tap again to take it back off. Nothing moves around while you work. Items marked ★ are part of your room standard.</p><div class="chips">`;
+  const block=(cat,items)=>{
+    if(!items.length) return;
+    html+=`<div class="catlabel">${esc(cat)}</div>`;
+    items.forEach(it=>{
+      const on=have.has(nkey(it));
+      html+=`<button class="${on?'on':''}" data-quick="${esc(it)}" data-cat="${esc(cat)}">${req.has(nkey(it))?'★ ':''}${esc(it)}</button>`;
+    });
+  };
+  if(extra.length) block('Your room standard',extra);
+  for(const [cat,items] of Object.entries(CATALOG)) block(cat,items);
+  html+=`</div><div class="btnrow"><button class="btn primary full" data-close>Done</button></div>`;
+  openSheet(html);
+}
+function moveBlock(kind,id){
+  const others=state.rooms.filter(x=>x.id!==currentRoomId);
+  if(!others.length) return '';
+  return `<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
+    <label class="f"><span>Put this in a different room</span>
+      <select id="moveTarget">${others.map(x=>`<option value="${x.id}">Room ${esc(x.number)}</option>`).join('')}</select>
+    </label>
+    <button class="btn full" data-${kind}="${esc(id)}">Move it there</button>
+  </div>`;
+}
+function sheetItem(itemId){
+  const r=room(currentRoomId);
+  const i=itemId?r.inventory.find(x=>x.id===itemId):null;
+  openSheet(`
+    <h3>${i?'Edit item':'Add item'}</h3>
+    <label class="f"><span>Item</span><input type="text" id="iName" value="${esc(i?i.name:'')}" placeholder="e.g. Mini fridge"></label>
+    <div class="grid2">
+      <label class="f"><span>Quantity</span><input type="number" id="iQty" min="0" step="1" value="${i?i.qty:1}"></label>
+      <label class="f"><span>Condition</span><select id="iCond">${CONDITIONS.map(c=>`<option ${i&&i.condition===c?'selected':''}>${c}</option>`).join('')}</select></label>
+    </div>
+    <label class="f"><span>Notes</span><textarea id="iNotes" placeholder="Scratches on door, missing shelf…">${esc(i?i.notes:'')}</textarea></label>
+    <div class="btnrow">
+      <button class="btn primary" data-saveitem="${i?i.id:''}">Save item</button>
+      <button class="btn" data-close>Cancel</button>
+      ${i?`<button class="btn danger" data-delitem="${i.id}">Delete</button>`:''}
+    </div>
+    ${i?moveBlock('moveitem',i.id):''}
+  `);
+}
+function sheetQuickWork(){
+  const r=room(currentRoomId);
+  const have=new Set(r.work.map(w=>nkey(w.task)));
+  let html=`<h3>Common jobs</h3><p class="hint" style="margin-bottom:10px">Tap to add, tap again to remove.</p><div class="chips">`;
+  WORK_PRESETS.forEach(t=>{
+    const on=have.has(nkey(t));
+    html+=`<button class="${on?'on':''}" data-quickwork="${esc(t)}">${esc(t)}</button>`;
+  });
+  html+=`</div><div class="btnrow"><button class="btn primary full" data-close>Done</button></div>`;
+  openSheet(html);
+}
+function sheetWork(workId){
+  const r=room(currentRoomId);
+  const w=workId?r.work.find(x=>x.id===workId):null;
+  openSheet(`
+    <h3>${w?'Edit job':'Add job'}</h3>
+    <label class="f"><span>What needs doing</span><input type="text" id="wTask" value="${esc(w?w.task:'')}" placeholder="e.g. Replace bathroom fan"></label>
+    <div class="grid2">
+      <label class="f"><span>Priority</span><select id="wPri">${['Low','Normal','High','Urgent'].map(p=>`<option ${w&&w.priority===p?'selected':(!w&&p==='Normal'?'selected':'')}>${p}</option>`).join('')}</select></label>
+      <label class="f"><span>Status</span><select id="wStat">${STATUSES.map(s=>`<option value="${s.k}" ${w&&w.status===s.k?'selected':''}>${s.label}</option>`).join('')}</select></label>
+    </div>
+    <label class="f"><span>Notes</span><textarea id="wNotes" placeholder="Parts needed, who's handling it, cost estimate…">${esc(w?w.notes:'')}</textarea></label>
+    <div class="btnrow">
+      <button class="btn primary" data-savework="${w?w.id:''}">Save job</button>
+      <button class="btn" data-close>Cancel</button>
+      ${w?`<button class="btn danger" data-delwork="${w.id}">Delete</button>`:''}
+    </div>
+    ${w?moveBlock('movejob',w.id):''}
+  `);
+}
+function sheetCopyRoom(){
+  const others=state.rooms.filter(r=>r.id!==currentRoomId && r.inventory.length);
+  if(!others.length){ toast('No other room has an item list yet'); return; }
+  openSheet(`
+    <h3>Copy item list</h3>
+    <p class="hint" style="margin-bottom:10px">Copies the item list only — photos, notes and jobs stay put.</p>
+    <label class="f"><span>Copy from</span><select id="copyFrom">${others.map(r=>`<option value="${r.id}">Room ${esc(r.number)} — ${r.inventory.length} items</option>`).join('')}</select></label>
+    <div class="btnrow">
+      <button class="btn primary" id="doCopy">Copy items here</button>
+      <button class="btn" data-close>Cancel</button>
+    </div>
+  `);
+}
+
+/* ---------------- menu ---------------- */
+function sheetMenu(){
+  const c=counts();
+  const totalPhotos=state.rooms.reduce((n,r)=>n+r.photos.length,0);
+  const openJobs=state.rooms.reduce((n,r)=>n+r.work.filter(w=>w.status!=='complete').length,0);
+  openSheet(`
+    <h3>Survey menu</h3>
+    <div class="card"><div class="body">
+      <div class="sub" style="font-family:var(--mono);font-size:12.5px;color:var(--muted)">
+        ${c.all} rooms · ${totalPhotos} photos · ${openJobs} open jobs<br>
+        ${candidates().length} upgrade candidate${candidates().length===1?'':'s'}${standardIsSet()?` · ${state.rooms.filter(r=>missingFor(r).length).length} below standard`:''}<br>
+        ${c.complete} complete · ${c.progress} in progress · ${c.needs} needs work · ${c.notdone} not done
+      </div>
+    </div></div>
+    <p class="hint" style="margin:0 0 6px"><strong>Setup</strong></p>
+    <div class="btnrow" style="margin-bottom:16px">
+      <button class="btn full" id="roomStandard">Room standard — what every room needs</button>
+    </div>
+    <p class="hint" style="margin:0 0 6px"><strong>For the owners</strong></p>
+    <div class="btnrow" style="margin-bottom:16px">
+      <button class="btn full" id="expXlsx">Export Excel workbook</button>
+      <button class="btn full" id="expReport">Build printable report (PDF)</button>
+      <button class="btn full" id="expPhotos">Download all photos (zip)</button>
+    </div>
+    <p class="hint" style="margin:0 0 6px"><strong>Your data</strong></p>
+    <div class="btnrow">
+      <button class="btn full" id="expBackup">Save backup file</button>
+      <button class="btn full" id="storageInfo">Check storage space</button>
+      <button class="btn full" id="recover">Recover earlier version</button>
+      <button class="btn full" id="mergeBackup">Merge another copy into this one</button>
+      <button class="btn full" id="impBackup">Restore from backup (replaces everything)</button>
+      <button class="btn full" id="setProp">Rename property</button>
+    </div>
+    <p class="hint">Everything lives on this phone only. Save a backup before clearing browser data or switching devices.</p>
+    <div class="btnrow" style="margin-top:14px"><button class="btn full" data-close>Close</button></div>
+  `);
+}
+
+/* ---------------- exports ---------------- */
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=src; s.onload=res; s.onerror=()=>rej(new Error('offline'));
+    document.head.appendChild(s);
+  });
+}
+function download(blob,name){
+  const u=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=u;a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},1500);
+}
+const stamp = ()=>new Date().toISOString().slice(0,10);
+
+async function exportXlsx(){
+  toast('Building workbook…');
+  try{
+    if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+  }catch(e){ toast('Needs internet to build the Excel file'); return; }
+
+  const rooms=[['Room','Type','Could be','Floor','Status','Items listed','Missing vs standard','Open jobs','Photos','Notes','Last updated']];
+  const inv=[['Room','Category','Item','Qty','Condition','Notes']];
+  const work=[['Room','Job','Priority','Status','Notes']];
+  const up=[['Room','Current type','Could be','What\'s holding it back','Open jobs','Jobs listed']];
+  const bel=[['Room','Type','Missing item','Required','Present']];
+
+  state.rooms.forEach(r=>{
+    rooms.push([r.number,r.type,r.upgradeTo||'',r.floor,statusLabel(r.status),r.inventory.length,missingFor(r).length,
+      r.work.filter(w=>w.status!=='complete').length,r.photos.length,r.notes,
+      r.updated?new Date(r.updated).toLocaleDateString():'']);
+    if(r.upgradeTo){
+      const open=r.work.filter(w=>w.status!=='complete');
+      up.push([r.number,r.type||'Not classified',r.upgradeTo,r.upgradeNote||'',open.length,
+        open.map(w=>w.task).join('; ')]);
+    }
+    missingFor(r).forEach(m=>bel.push([r.number,r.type||'Not classified',m.name,m.need,m.have]));
+    r.inventory.forEach(i=>inv.push([r.number,i.category||'',i.name,i.qty,i.condition,i.notes]));
+    r.work.forEach(w=>work.push([r.number,w.task,w.priority,statusLabel(w.status),w.notes]));
+  });
+
+  const wb=XLSX.utils.book_new();
+  const add=(rowsArr,name,widths)=>{
+    const ws=XLSX.utils.aoa_to_sheet(rowsArr);
+    ws['!cols']=widths.map(w=>({wch:w}));
+    ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(rowsArr.length-1,1),c:widths.length-1}})};
+    ws['!freeze']={xSplit:0,ySplit:1};
+    XLSX.utils.book_append_sheet(wb,ws,name);
+  };
+  add(rooms,'Rooms',[10,17,17,12,13,12,18,10,8,42,13]);
+  add(up,'Upgrade Opportunities',[10,17,17,44,10,50]);
+  if(bel.length>1) add(bel,'Below Standard',[10,18,30,10,9]);
+  add(inv,'Inventory',[10,16,24,6,11,40]);
+  add(work,'Work Items',[10,30,10,13,40]);
+
+  try{
+    const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    const name=`${(state.property||'property').replace(/[^\w]+/g,'-').replace(/^-|-$/g,'')}-room-survey-${stamp()}.xlsx`;
+    download(new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name);
+    toast('Excel workbook saved');
+  }catch(e){ toast('Could not build the workbook'); }
+}
+
+let reportURLs=[];
+function clearReport(){
+  reportURLs.forEach(u=>URL.revokeObjectURL(u)); reportURLs=[];
+  document.getElementById('reportRoot').innerHTML='';
+  document.body.classList.remove('printing');
+}
+function sheetReport(){
+  const c=counts();
+  const shown=visibleRooms().length;
+  openSheet(`
+    <h3>Printable report</h3>
+    <p class="hint" style="margin-bottom:12px">Builds the report on screen. Use your browser's Share → Print to save it as a PDF.</p>
+    <label class="f"><span>Which rooms</span>
+      <select id="repScope">
+        <option value="all">All rooms (${c.all})</option>
+        <option value="filter">Rooms shown by current filter (${shown})</option>
+        <option value="up">Upgrade candidates only (${candidates().length})</option>
+        <option value="open">Rooms with open jobs (${state.rooms.filter(r=>r.work.some(w=>w.status!=='complete')).length})</option>
+      </select>
+    </label>
+    <label class="f"><span>Photos</span>
+      <select id="repPhotos">
+        <option value="all">Include all photos</option>
+        <option value="4">Include first 4 per room</option>
+        <option value="0">No photos — text only</option>
+      </select>
+    </label>
+    <label class="f"><span>Page breaks</span>
+      <select id="repBreak">
+        <option value="0">Flow continuously (fewer pages)</option>
+        <option value="1">Start each room on a new page</option>
+      </select>
+    </label>
+    <p class="hint">Printing 50 rooms with every photo makes a large document. If your phone struggles, print in batches using the filter option.</p>
+    <div class="btnrow" style="margin-top:6px">
+      <button class="btn primary" id="doReport">Build report</button>
+      <button class="btn" data-close>Cancel</button>
+    </div>
+  `);
+}
+async function exportReport(scope,photoMode,newPage){
+  let list;
+  if(scope==='filter') list=visibleRooms();
+  else if(scope==='up') list=candidates();
+  else if(scope==='open') list=state.rooms.filter(r=>r.work.some(w=>w.status!=='complete'));
+  else list=state.rooms;
+  if(!list.length){toast('No rooms match that selection');return}
+
+  toast('Building report…');
+  await new Promise(r=>setTimeout(r,40));
+  clearReport();
+
+  const limit = photoMode==='0' ? 0 : (photoMode==='4' ? 4 : MAX_PHOTOS);
+  const parts=[];
+  let shot=0;
+  for(const r of list){
+    let imgs='', shown=0;
+    if(limit){
+      for(const pid of r.photos.slice(0,limit)){
+        const p=await idbGet('photos',pid);
+        if(!p||!p.full||!p.full.size) continue;
+        const u=URL.createObjectURL(p.full); reportURLs.push(u);
+        imgs+=`<figure><img src="${u}" alt="Room ${esc(r.number)}" loading="eager"></figure>`; shown++;
+        if(++shot%30===0){ toast(`Loading photos… ${shot}`); await new Promise(x=>setTimeout(x,0)); }
+      }
+    }
+    const open=r.work.filter(x=>x.status!=='complete');
+    parts.push(`
+      <section${newPage?' class="pagebreak"':''}>
+        <header><h2>Room ${esc(r.number)}</h2><span class="st st-${r.status}">${statusLabel(r.status)}</span></header>
+        <p class="meta">${esc(r.type||'Not classified')}${r.floor?' · '+esc(r.floor):''} · ${r.inventory.length} items · ${open.length} open jobs · ${r.photos.length} photos</p>
+        ${r.upgradeTo?`<p class="up"><strong>Upgrade candidate — could be ${esc(r.upgradeTo)}.</strong> ${esc(r.upgradeNote||'See jobs below.')}</p>`:''}
+        ${r.notes?`<p class="notes">${esc(r.notes)}</p>`:''}
+        ${imgs?`<h3>Photos — ${shown} of ${r.photos.length}</h3><div class="pg">${imgs}</div>`:''}
+        ${!imgs&&r.photos.length?`<p class="meta">${r.photos.length} photo${r.photos.length===1?'':'s'} on file — not included in this version of the report.</p>`:''}
+        ${r.inventory.length?`<h3>Inventory — ${r.inventory.length} items</h3><table>
+          <thead><tr><th>Item</th><th>Qty</th><th>Condition</th><th>Notes</th></tr></thead><tbody>
+          ${r.inventory.map(i=>`<tr><td>${esc(i.name)}</td><td>${i.qty}</td><td>${esc(i.condition)}</td><td>${esc(i.notes)}</td></tr>`).join('')}</tbody></table>`:''}
+        ${(()=>{const m=missingFor(r); return m.length?`<h3>Missing against room standard — ${m.length}</h3>
+          <p class="miss">${m.map(x=>esc(missLabel(x))).join(' · ')}</p>`:''})()}
+        ${!r.inventory.length&&!r.work.length?`<p class="meta">No items or jobs recorded for this room yet.</p>`:''}
+        ${r.work.length?`<h3>Work needed — ${r.work.length} jobs</h3><table>
+          <thead><tr><th>Job</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead><tbody>
+          ${r.work.map(x=>`<tr><td>${esc(x.task)}</td><td>${esc(x.priority)}</td><td>${statusLabel(x.status)}</td><td>${esc(x.notes)}</td></tr>`).join('')}</tbody></table>`:''}
+      </section>`);
+  }
+
+  const sc={notdone:0,progress:0,needs:0,complete:0};
+  const tc={};
+  list.forEach(r=>{sc[r.status]++;const k=r.type||'Not classified';tc[k]=(tc[k]||0)+1});
+  const typeLine=Object.entries(tc).map(([k,v])=>`${v} ${k}`).join(' · ');
+  const cands=list.filter(r=>r.upgradeTo);
+  const totalPhotos=list.reduce((n,r)=>n+r.photos.length,0);
+
+  const below=list.map(r=>({r,m:missingFor(r)})).filter(x=>x.m.length);
+  const gapSummary = below.length ? `<section><h2>Below room standard</h2>
+    <p class="meta">${below.length} room${below.length===1?'':'s'} missing at least one required item.</p>
+    <table><thead><tr><th>Room</th><th>Type</th><th>Missing</th></tr></thead><tbody>
+    ${below.map(x=>`<tr><td>${esc(x.r.number)}</td><td>${esc(x.r.type||'Not classified')}</td><td>${x.m.map(y=>esc(missLabel(y))).join(', ')}</td></tr>`).join('')}
+    </tbody></table></section>` : '';
+
+  const summary = cands.length ? `<section><h2>Upgrade opportunities</h2>
+    <p class="meta">${cands.length} room${cands.length===1?'':'s'} could be re-classified once the listed work is done.</p>
+    <table><thead><tr><th>Room</th><th>Currently</th><th>Could be</th><th>What's holding it back</th><th>Open jobs</th></tr></thead><tbody>
+    ${cands.map(r=>{const o=r.work.filter(x=>x.status!=='complete');
+      return `<tr><td>${esc(r.number)}</td><td>${esc(r.type||'Not classified')}</td><td><strong>${esc(r.upgradeTo)}</strong></td><td>${esc(r.upgradeNote)}</td><td>${o.length?esc(o.map(x=>x.task).join('; ')):'—'}</td></tr>`;
+    }).join('')}</tbody></table></section>` : '';
+
+  document.getElementById('reportRoot').innerHTML=`
+    <div class="printbar">
+      <span class="t">${list.length} rooms · ${limit?totalPhotos+' photos':'no photos'}</span>
+      <button class="iconbtn" id="doPrint">Print / Save PDF</button>
+      <button class="iconbtn" id="closeReport">Close</button>
+    </div>
+    <div class="doc">
+      <section class="cover">
+        <h1>${esc(state.property)} — Room Survey</h1>
+        <p class="lead">${stamp()} · ${list.length} room${list.length===1?'':'s'}<br>
+        ${sc.complete} complete · ${sc.progress} in progress · ${sc.needs} needs work · ${sc.notdone} not done<br>
+        ${esc(typeLine)}</p>
+      </section>
+      ${gapSummary}
+      ${summary}
+      ${parts.join('')}
+    </div>`;
+  document.body.classList.add('printing');
+  window.scrollTo(0,0);
+
+  const imgs=[...document.querySelectorAll('#reportRoot img')];
+  const btn=document.getElementById('doPrint');
+  if(imgs.length){
+    btn.disabled=true; btn.textContent='Loading photos…';
+    let ready=0;
+    await Promise.all(imgs.map(im=>{
+      const done=()=>{ if(++ready%20===0) btn.textContent=`Loading… ${ready}/${imgs.length}`; };
+      if(im.complete && im.naturalWidth) { done(); return Promise.resolve(); }
+      return new Promise(res=>{
+        im.addEventListener('load',()=>{done();res()},{once:true});
+        im.addEventListener('error',()=>{im.style.display='none';done();res()},{once:true});
+      });
+    }));
+    const failed=imgs.filter(im=>!im.naturalWidth).length;
+    btn.disabled=false; btn.textContent='Print / Save PDF';
+    toast(failed?`Report ready · ${failed} photo${failed===1?'':'s'} could not be loaded`:'Report ready — all photos loaded');
+  } else {
+    toast('Report ready');
+  }
+}
+function blobToDataURL(b){return new Promise(res=>{const f=new FileReader();f.onload=()=>res(f.result);f.readAsDataURL(b)})}
+
+async function exportPhotos(){
+  const total=state.rooms.reduce((n,r)=>n+r.photos.length,0);
+  if(!total){toast('No photos yet');return}
+  toast('Zipping photos…');
+  try{
+    if(!window.JSZip) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+  }catch(e){toast('Needs internet to build the zip');return}
+  const zip=new JSZip();
+  for(const r of state.rooms){
+    let n=1;
+    for(const pid of r.photos){
+      const p=await idbGet('photos',pid);
+      const safe=String(r.number).replace(/[\\/:*?"<>|]+/g,'-').trim()||'unnamed';
+      if(p&&p.full&&p.full.size) zip.folder(`Room ${safe}`).file(`room-${safe}-${String(n++).padStart(2,'0')}.jpg`,p.full);
+    }
+  }
+  const blob=await zip.generateAsync({type:'blob'});
+  download(blob,`room-photos-${stamp()}.zip`);
+  toast('Photo zip saved');
+}
+
+async function sheetRecover(){
+  let snaps=[];
+  try{
+    const keys=(await idbKeys('kv')).filter(k=>typeof k==='string'&&k.startsWith('snap:')).sort().reverse();
+    for(const k of keys){ const v=await idbGet('kv',k); if(v) snaps.push({key:k,...v}); }
+  }catch(e){}
+  const photos=await idbAll('photos').catch(()=>[]);
+  const linked=new Set(state.rooms.flatMap(r=>r.photos));
+  const orphan=photos.filter(p=>!linked.has(p.id)).length;
+  openSheet(`
+    <h3>Recover earlier version</h3>
+    <p class="hint" style="margin-bottom:6px"><strong>Storing data under:</strong><br><span style="font-family:var(--mono);font-size:11px;word-break:break-all">${esc(location.origin+location.pathname)}</span></p>
+    <p class="hint" style="margin-bottom:12px">If that address is not the one you used before, your rooms are under the old address, not lost. The app keeps its last ${SNAP_KEEP} versions on this device automatically. Restoring replaces what is on screen now — a snapshot of the current state is taken first, so this is reversible.</p>
+    ${orphan?`<div class="warnbar">${orphan} photo${orphan===1?'':'s'} on this device belong to no room right now. Restoring a snapshot from before the loss should reconnect them.</div>`:''}
+    ${snaps.length? snaps.map(sn=>`<div class="stdrow">
+        <span class="nm">${sn.rooms} rooms<span class="need"> · ${sn.items||0} items · ${sn.photos||0} photos</span>
+          <span class="tag t-unchecked">${new Date(sn.ts).toLocaleString()} · ${esc(sn.reason||'auto')}</span></span>
+        <span class="bs"><button class="btn sm" data-restoresnap="${esc(sn.key)}">Restore</button></span>
+      </div>`).join('')
+      : `<p class="hint">No snapshots yet. They start building from now on — one at launch, one every couple of minutes while you work, and one before anything destructive.</p>`}
+    <div class="btnrow" style="margin-top:14px"><button class="btn full" data-close>Close</button></div>
+  `);
+}
+function sheetBackup(){
+  const n=state.rooms.reduce((a,r)=>a+r.photos.length,0);
+  openSheet(`
+    <h3>Save backup</h3>
+    <p class="hint" style="margin-bottom:12px">You have ${n} photo${n===1?'':'s'} stored. A full backup restores everything; a data-only backup is small and quick but carries no images.</p>
+    <div class="btnrow">
+      <button class="btn primary full" id="bkFull">Full backup — rooms and photos</button>
+      <button class="btn full" id="bkData">Data only — rooms, no photos</button>
+      <button class="btn full" data-close>Cancel</button>
+    </div>
+    <p class="hint">With a lot of photos a full backup can be a very large file. Keeping a data-only backup plus the photo zip is often easier to store and restore.</p>
+  `);
+}
+async function exportBackup(withPhotos){
+  const parts=['{"state":',JSON.stringify(state),',"photos":['];
+  if(withPhotos){
+    const photos=await idbAll('photos');
+    let i=0, first=true;
+    for(const p of photos){
+      if(!p.full||!p.thumb) continue;
+      try{
+        const rec={id:p.id,roomId:p.roomId,ts:p.ts,
+          full:await blobToDataURL(p.full), thumb:await blobToDataURL(p.thumb)};
+        parts.push((first?'':',')+JSON.stringify(rec));
+        first=false;
+      }catch(e){ /* skip an unreadable photo rather than lose the whole backup */ }
+      if(++i%25===0) toast(`Packing photos… ${i}/${photos.length}`);
+    }
+  }
+  parts.push(']}');
+  state.lastBackup=Date.now(); save();
+  try{
+    const blob=new Blob(parts,{type:'application/json'});
+    download(blob,`room-survey-${withPhotos?'full':'data'}-${stamp()}.json`);
+    toast(`Backup saved · ${(blob.size/1048576).toFixed(1)} MB`);
+  }catch(e){ toast('Backup too large for this device — try data only'); }
+}
+/* Combine two versions of the same room. Nothing is ever dropped: lists are
+   unioned, and where both sides describe the same item the richer entry wins. */
+const richerItem=(a,b)=>{
+  const score=x=>((x.notes&&x.notes.trim())?4:0)+(x.condition&&x.condition!=='Good'?2:0)+(+x.qty>1?1:0);
+  return score(b)>score(a)?b:a;
+};
+const richerJob=(a,b)=>{
+  const score=x=>((x.notes&&x.notes.trim())?4:0)+(x.status&&x.status!=='notdone'?2:0)+(x.priority&&x.priority!=='Normal'?1:0);
+  return score(b)>score(a)?b:a;
+};
+function mergeRooms(cur,inc){
+  const out=normalizeRoom(JSON.parse(JSON.stringify(cur)));
+  const gains={items:0,jobs:0,photos:0};
+
+  const byItem=new Map(out.inventory.map(i=>[nkey(i.name),i]));
+  (inc.inventory||[]).forEach(i=>{
+    const k=nkey(i.name);
+    if(!byItem.has(k)){ out.inventory.push(i); byItem.set(k,i); gains.items++; }
+    else{
+      const win=richerItem(byItem.get(k),i);
+      const idx=out.inventory.indexOf(byItem.get(k));
+      if(win!==byItem.get(k)){ out.inventory[idx]={...win,id:byItem.get(k).id}; byItem.set(k,out.inventory[idx]); }
+    }
+  });
+
+  const byJob=new Map(out.work.map(w=>[nkey(w.task),w]));
+  (inc.work||[]).forEach(w=>{
+    const k=nkey(w.task);
+    if(!byJob.has(k)){ out.work.push(w); byJob.set(k,w); gains.jobs++; }
+    else{
+      const win=richerJob(byJob.get(k),w);
+      const idx=out.work.indexOf(byJob.get(k));
+      if(win!==byJob.get(k)){ out.work[idx]={...win,id:byJob.get(k).id}; byJob.set(k,out.work[idx]); }
+    }
+  });
+
+  const seen=new Set(out.photos);
+  (inc.photos||[]).forEach(p=>{ if(!seen.has(p)){ out.photos.push(p); seen.add(p); gains.photos++; } });
+
+  ['type','floor','upgradeTo'].forEach(f=>{ if(!out[f] && inc[f]) out[f]=inc[f]; });
+  [['notes','notes'],['upgradeNote','upgradeNote']].forEach(([f])=>{
+    const a=(out[f]||'').trim(), b=(inc[f]||'').trim();
+    if(!a && b) out[f]=b;
+    else if(a && b && nkey(a)!==nkey(b)) out[f]=a+'\n'+b;      // keep both notes
+  });
+  if(out.status==='notdone' && inc.status && inc.status!=='notdone') out.status=inc.status;
+  out.updated=Math.max(out.updated||0, inc.updated||0);
+  out.savedAt=0;
+  return {room:out,gains};
+}
+
+function buildMergePlan(data){
+  const incoming=data.state.rooms.filter(r=>r&&typeof r==='object').map(normalizeRoom);
+  const add=[], merge=[];
+  incoming.forEach(inc=>{
+    const cur=state.rooms.find(x=>nkey(x.number)===nkey(inc.number));
+    if(!cur){ add.push(inc); return; }
+    const {room,gains}=mergeRooms(cur,inc);
+    merge.push({cur,inc,room,gains});
+  });
+  return {add,merge,incoming};
+}
+
+function mergeBackup(){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=async()=>{
+    const f=inp.files[0]; if(!f) return;
+    let data;
+    try{ data=JSON.parse(await f.text()); }
+    catch(e){ toast('That file is too large or damaged to read'); return; }
+    if(!data.state||!Array.isArray(data.state.rooms)){ toast('That is not a survey backup'); return; }
+
+    const plan=buildMergePlan(data);
+    const changed=plan.merge.filter(m=>m.gains.items||m.gains.jobs||m.gains.photos);
+    const same=plan.merge.length-changed.length;
+    const tot=changed.reduce((a,m)=>({i:a.i+m.gains.items,j:a.j+m.gains.jobs,p:a.p+m.gains.photos}),{i:0,j:0,p:0});
+
+    openSheet(`
+      <h3>Merge survey</h3>
+      <p class="hint" style="margin-bottom:12px">Both copies are combined. Nothing is deleted or replaced — rooms only gain what they were missing.</p>
+      <div class="card"><div class="body">
+        <div style="font-family:var(--mono);font-size:12.5px;color:var(--muted);line-height:1.7">
+          On this device: <strong>${state.rooms.length}</strong> rooms<br>
+          In the file: <strong>${plan.incoming.length}</strong> rooms<br><br>
+          <span style="color:var(--complete)">${plan.add.length} rooms added</span><br>
+          <span style="color:var(--progress)">${changed.length} rooms gain detail</span>
+          ${tot.i||tot.j||tot.p?`<br>&nbsp;&nbsp;+${tot.i} items · +${tot.j} jobs · +${tot.p} photos`:''}<br>
+          ${same} already up to date<br><br>
+          Result: <strong>${state.rooms.length+plan.add.length}</strong> rooms
+        </div>
+      </div></div>
+      ${plan.add.length?`<p class="hint" style="margin:0 0 4px"><strong>New rooms</strong></p>
+        <p class="hint" style="margin:0 0 12px">${plan.add.map(r=>esc(r.number)).join(', ')}</p>`:''}
+      ${changed.length?`<p class="hint" style="margin:0 0 4px"><strong>Rooms gaining detail</strong></p>
+        ${changed.map(m=>`<div class="stdrow"><span class="nm">Room ${esc(m.cur.number)}
+          <span class="tag t-unchecked">+${m.gains.items} items · +${m.gains.jobs} jobs · +${m.gains.photos} photos</span></span></div>`).join('')}
+        <div style="height:10px"></div>`:''}
+      <div class="btnrow">
+        <button class="btn primary" id="doMerge">Merge into this device</button>
+        <button class="btn" data-close>Cancel</button>
+      </div>
+    `);
+    pendingMerge={data,plan};
+  };
+  inp.click();
+}
+let pendingMerge=null;
+
+async function applyMerge(){
+  if(!pendingMerge) return;
+  const {data,plan}=pendingMerge;
+  await snapshot('before merge');
+  const incomingPhotos=data.photos||[];
+  let n=0;
+  for(const p of incomingPhotos){
+    if(!p||!p.id||!p.full) continue;
+    try{
+      if(!(await idbGet('photos',p.id))){
+        await idbPut('photos',{id:p.id,roomId:p.roomId,ts:p.ts,
+          full:await (await fetch(p.full)).blob(), thumb:await (await fetch(p.thumb||p.full)).blob()});
+      }
+    }catch(e){}
+    if(++n%15===0) toast(`Merging photos… ${n}/${incomingPhotos.length}`);
+  }
+  const present=new Set((await idbAll('photos')).map(p=>p.id));
+
+  plan.merge.forEach(m=>{
+    const i=state.rooms.findIndex(x=>x.id===m.cur.id);
+    m.room.photos=m.room.photos.filter(id=>present.has(id));
+    if(i>=0) state.rooms[i]=m.room;
+  });
+  plan.add.forEach(inc=>{
+    inc.photos=inc.photos.filter(id=>present.has(id));
+    inc.savedAt=0;
+    state.rooms.push(inc);
+  });
+  state.rooms.forEach(r=>{ r.photos=r.photos.filter(id=>present.has(id)); });
+
+  normalizeStandard();
+  const incStd=(data.state.standard&&Array.isArray(data.state.standard.all))?data.state.standard.all:[];
+  if(incStd.length>state.standard.all.length) state.standard.all=incStd;
+  if(data.state.standard&&data.state.standard.byType){
+    Object.entries(data.state.standard.byType).forEach(([k,v])=>{
+      if(Array.isArray(v)&&v.length>(state.standard.byType[k]||[]).length) state.standard.byType[k]=v;
+    });
+  }
+
+  state.rooms.sort((a,b)=>String(a.number).localeCompare(String(b.number),undefined,{numeric:true}));
+  await supersede();
+  deleteIntent=Date.now();
+  await writeState();
+  await snapshot('after merge');
+  pendingMerge=null;
+  closeSheet(); clearFilters(); showBoard();
+  toast(`Merged · ${state.rooms.length} rooms total`);
+}
+
+let pendingRestore=null;
+function importBackup(){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=async()=>{
+    const f=inp.files[0]; if(!f) return;
+    let data;
+    try{ data=JSON.parse(await f.text()); }
+    catch(e){ toast('That file is too large or damaged to read'); return; }
+    if(!data.state||!Array.isArray(data.state.rooms)){ toast('That is not a survey backup'); return; }
+
+    const rooms=data.state.rooms.filter(r=>r&&typeof r==='object');
+    const photos=(data.photos||[]).length;
+    const onDevice=(await idbAll('photos').catch(()=>[])).length;
+    const items=rooms.reduce((n,r)=>n+((r.inventory||[]).length),0);
+    const worked=rooms.filter(r=>(r.inventory||[]).length||(r.photos||[]).length).length;
+
+    pendingRestore=data;
+    openSheet(`
+      <h3>Check this file first</h3>
+      <p class="hint" style="margin-bottom:10px;word-break:break-all"><strong>${esc(f.name)}</strong> · ${(f.size/1048576).toFixed(2)} MB</p>
+      <div class="card"><div class="body">
+        <div style="font-family:var(--mono);font-size:13px;line-height:1.8">
+          <strong style="font-size:22px">${rooms.length}</strong> rooms in this file<br>
+          ${worked} with work recorded · ${items} items<br>
+          ${photos} photos in the file · ${onDevice} already on this phone
+        </div>
+      </div></div>
+      <p class="hint" style="margin:0 0 4px"><strong>Rooms it contains</strong></p>
+      <p class="hint" style="margin:0 0 14px;word-break:break-word">${rooms.map(r=>esc(String(r.number))).join(', ')}</p>
+      <div class="warnbar" style="background:#fbeee9;border-color:#e6b8a8;color:#7c2d12">
+        This <strong>replaces</strong> the ${state.rooms.length} rooms currently on this phone.
+        If you want both sets, cancel and use <strong>Merge</strong> instead.
+      </div>
+      <div class="btnrow">
+        <button class="btn primary" id="doRestore">Load these ${rooms.length} rooms</button>
+        <button class="btn" data-close>Cancel</button>
+      </div>
+    `);
+  };
+  inp.click();
+}
+
+async function applyRestore(){
+  const data=pendingRestore; if(!data) return;
+  deleteIntent=Date.now(); await snapshot('before restore');
+  try{
+    const incoming=data.photos||[];
+    for(const [,u] of thumbURLs) URL.revokeObjectURL(u);
+    thumbURLs.clear();
+    let done=0;
+    for(const p of incoming){
+      try{
+        await idbPut('photos',{id:p.id,roomId:p.roomId,ts:p.ts,
+          full:await (await fetch(p.full)).blob(), thumb:await (await fetch(p.thumb||p.full)).blob()});
+      }catch(e){}
+      if(++done%20===0) toast(`Loading photos… ${done}/${incoming.length}`);
+    }
+    state=data.state;
+    if(typeof state.property!=='string'||!state.property) state.property='Home Away Inn';
+    normalizeStandard();
+    const present=new Set((await idbAll('photos')).map(p=>p.id));
+    let kept=0, dropped=0;
+    state.rooms=state.rooms.filter(r=>r&&typeof r==='object').map(r=>{
+      normalizeRoom(r);
+      const b=r.photos.length;
+      r.photos=r.photos.filter(pid=>present.has(pid));
+      kept+=r.photos.length; dropped+=b-r.photos.length;
+      return r;
+    });
+    await supersede();
+    deleteIntent=Date.now();
+    await writeState();
+
+    const check=await idbGet('kv','state');
+    const landed=check&&Array.isArray(check.rooms)?check.rooms.length:0;
+    await snapshot('after restore');
+    const want=state.rooms.length;
+    pendingRestore=null;
+    closeSheet(); clearFilters(); showBoard();
+    if(landed!==want){
+      alert(`Only ${landed} of ${want} rooms reached storage.\n\nDo not close the app — save a backup file from the menu now.`);
+    } else {
+      alert(`Loaded ${landed} rooms and ${kept} photos.${dropped?`\n\n${dropped} photos belonging to these rooms are not on this phone.`:''}`);
+    }
+  }catch(e){
+    pendingRestore=null;
+    alert('The restore did not finish. Nothing was lost — try again, or use the smaller file.');
+  }
+}
+
+/* ---------------- events ---------------- */
+document.addEventListener('click', async e=>{
+  const t=e.target.closest('button, img[data-view]');
+  if(!t) return;
+
+  if(t.hasAttribute('data-close')) return closeSheet();
+
+  /* board */
+  const f=t.closest('[data-filter]');
+  if(f){ filter=f.dataset.filter; renderBoard(); return; }
+  const tile=t.closest('[data-room]');
+  if(tile) return showRoom(tile.dataset.room);
+
+  const id=t.id;
+  if(id==='showAll'){ clearFilters(); renderBoard(); return; }
+  if(id==='syncBtn') return syncNow(false);
+  if(id==='todoBtn') return showTodo();
+  if(id==='fab') return sheetAddRooms();
+  if(id==='backBtn'){ flushSave(); return showBoard(); }
+  if(id==='saveRoom') return saveRoomNow();
+  if(id==='menuBtn') return sheetMenu();
+  if(id==='lbClose'){
+    const im=document.getElementById('lbImg');
+    if(im.src.startsWith('blob:')) URL.revokeObjectURL(im.src);
+    im.removeAttribute('src');
+    return document.getElementById('lightbox').classList.remove('on');
+  }
+
+  if(id==='doAddRooms'){
+    const v=document.getElementById('roomInput').value;
+    if(!v.trim()) return toast('Enter at least one room number');
+    addRooms(v,document.getElementById('typeInput').value.trim());
+    closeSheet(); return;
+  }
+
+  /* menu actions */
+  if(id==='expXlsx'){closeSheet();return exportXlsx()}
+  if(id==='expReport'){return sheetReport()}
+  if(id==='doReport'){
+    const sc=document.getElementById('repScope').value;
+    const ph=document.getElementById('repPhotos').value;
+    const nb=document.getElementById('repBreak').value==='1';
+    closeSheet(); return exportReport(sc,ph,nb);
+  }
+  if(id==='doPrint'){ window.print(); return; }
+  if(id==='closeReport'){ clearReport(); return; }
+  if(id==='expPhotos'){closeSheet();return exportPhotos()}
+  if(id==='expBackup'){return sheetBackup()}
+  if(id==='bkFull'){closeSheet();return exportBackup(true)}
+  if(id==='bkData'){closeSheet();return exportBackup(false)}
+  if(id==='impBackup'){return importBackup()}
+  if(id==='doRestore'){return applyRestore()}
+  if(id==='mergeBackup'){return mergeBackup()}
+  if(id==='doMerge'){return applyMerge()}
+  if(id==='recover'){ return sheetRecover(); }
+  const rs2=t.closest('[data-restoresnap]');
+  if(rs2){
+    const key=rs2.dataset.restoresnap;
+    const snap=await idbGet('kv',key);
+    if(!snap||!snap.data){ toast('That snapshot could not be read'); return; }
+    if(!confirm(`Go back to the version from ${new Date(snap.ts).toLocaleString()} with ${snap.rooms} rooms? Anything added since is replaced.`)) return;
+    deleteIntent=Date.now(); await snapshot('before recover');
+    state=snap.data; normalizeStandard();
+    state.rooms=state.rooms.filter(x=>x&&typeof x==='object').map(normalizeRoom);
+    for(const [,u] of thumbURLs) URL.revokeObjectURL(u);
+    thumbURLs.clear();
+    await supersede();
+    deleteIntent=Date.now();
+    await writeState();
+    closeSheet(); clearFilters(); showBoard();
+    toast(`Restored ${state.rooms.length} rooms`);
+    return;
+  }
+  if(id==='storageInfo'){
+    if(navigator.storage&&navigator.storage.estimate){
+      const est=await navigator.storage.estimate();
+      const used=(est.usage/1048576).toFixed(1), qta=(est.quota/1048576).toFixed(0);
+      let persisted=false;
+      try{ persisted=await navigator.storage.persisted(); }catch(e){}
+      if(!persisted && navigator.storage.persist){ try{ persisted=await navigator.storage.persist(); }catch(e){} }
+      alert(`${location.protocol==='file:'?'WARNING: running from a downloaded file. Each copy in Downloads has its own separate storage.\n\n':''}Using ${used} MB of about ${qta} MB available.\n\nProtected from automatic cleanup: ${persisted?'yes':'no'}.\n\nThis copy stores its data under:\n${location.origin}${location.pathname}\n\nOpen the app from a different address and it will look empty — the data is still under the old one. Always use the same bookmark.`);
+    } else alert('This browser cannot report storage usage.');
+    return;
+  }
+  if(id==='roomStandard'){ return sheetStandard('__all__'); }
+  if(id==='stdReset'){
+    const box=document.getElementById('stdList');
+    if(!box) return;
+    if(!confirm('Put the original baseline list back in the box? Nothing is saved until you tap Save standard.')) return;
+    box.value=DEFAULT_STANDARD.join('\n');
+    toast('Original list loaded — tap Save standard to keep it');
+    return;
+  }
+  if(id==='setProp'){
+    const n=prompt('Property name',state.property);
+    if(n&&n.trim()){state.property=n.trim();save();closeSheet();showBoard();}
+    return;
+  }
+
+  /* room-level — a to-do line names its own room, so it can be acted on
+     straight from the combined list without opening the room first */
+  const troom=t.closest('[data-troom]');
+  if(troom && room(troom.dataset.troom)) currentRoomId=troom.dataset.troom;
+  const r=room(currentRoomId);
+  if(!r) return;
+
+  const rs=t.closest('[data-roomstatus]');
+  if(rs){ r.status=rs.dataset.roomstatus; r.updated=Date.now(); save(); refresh(); return; }
+
+  if(id==='camBtn'||id==='libBtn'){
+    const inp=document.createElement('input');
+    inp.type='file'; inp.accept='image/*'; inp.multiple=(id==='libBtn');
+    if(id==='camBtn') inp.setAttribute('capture','environment');
+    inp.onchange=()=>inp.files.length&&addPhotos(r.id,[...inp.files]);
+    inp.click(); return;
+  }
+  const del=t.closest('[data-delphoto]');
+  if(del) return removePhoto(r.id,del.dataset.delphoto);
+  const view=t.closest('[data-view]');
+  if(view){
+    const p=await idbGet('photos',view.dataset.view);
+    if(p){ document.getElementById('lbImg').src=URL.createObjectURL(p.full); document.getElementById('lightbox').classList.add('on'); }
+    return;
+  }
+
+  if(id==='quickAdd') return sheetQuickAdd();
+  if(id==='customItem') return sheetItem(null);
+  if(id==='quickWork') return sheetQuickWork();
+  if(id==='customWork') return sheetWork(null);
+  if(id==='copyRoom') return sheetCopyRoom();
+  if(id==='doCopy'){
+    const src=room(document.getElementById('copyFrom').value);
+    if(src){
+      const have=new Set(r.inventory.map(i=>nkey(i.name)));
+      let n=0;
+      src.inventory.forEach(i=>{ if(have.has(nkey(i.name)))return;
+        r.inventory.push({...i,id:uid(),notes:''}); n++; });
+      r.updated=Date.now(); save(); closeSheet(); renderRoom();
+      toast(`${n} item${n===1?'':'s'} copied`);
+    }
+    return;
+  }
+  if(id==='delRoom'){
+    if(!confirm(`Delete room ${r.number} and its photos? This can't be undone.`)) return;
+    deleteIntent=Date.now(); await snapshot('before delete');
+    for(const pid of r.photos){
+      await idbDel('photos',pid);
+      if(thumbURLs.has(pid)){URL.revokeObjectURL(thumbURLs.get(pid));thumbURLs.delete(pid)}
+    }
+    state.rooms=state.rooms.filter(x=>x.id!==r.id);
+    save(); showBoard(); toast('Room deleted'); return;
+  }
+
+  const q=t.closest('[data-quick]');
+  if(q){
+    const name=q.dataset.quick, key=nkey(name);
+    const found=r.inventory.find(i=>nkey(i.name)===key);
+    if(found){
+      const edited = (found.notes&&found.notes.trim()) || +found.qty!==1 || found.condition!=='Good';
+      if(edited && !confirm(`"${found.name}" has details filled in (qty ${found.qty}, ${found.condition}${found.notes?', notes':''}). Remove it anyway?`)) return;
+      r.inventory=r.inventory.filter(i=>i!==found);
+      q.classList.remove('on');
+    } else {
+      r.inventory.push({id:uid(),name,category:q.dataset.cat==='Your room standard'?'':q.dataset.cat,qty:1,condition:'Good',notes:''});
+      q.classList.add('on');
+    }
+    r.updated=Date.now(); save(); refresh(); return;
+  }
+  const qw=t.closest('[data-quickwork]');
+  if(qw){
+    const task=qw.dataset.quickwork, key=nkey(task);
+    const found=r.work.find(w=>nkey(w.task)===key);
+    if(found){
+      const edited=(found.notes&&found.notes.trim())||found.status!=='notdone'||found.priority!=='Normal';
+      if(edited && !confirm(`"${found.task}" has been updated (${statusLabel(found.status)}). Remove it anyway?`)) return;
+      r.work=r.work.filter(w=>w!==found);
+      qw.classList.remove('on');
+    } else {
+      r.work.push({id:uid(),task,priority:'Normal',status:'notdone',notes:''});
+      qw.classList.add('on');
+    }
+    r.updated=Date.now(); save(); refresh(); return;
+  }
+  const sp=t.closest('[data-stdpresent]'), sm=t.closest('[data-stdmissing]');
+  if(sp||sm){
+    const name=(sp||sm).dataset[sp?'stdpresent':'stdmissing'];
+    const k=nkey(name);
+    let it=r.inventory.find(i=>nkey(i.name)===k);
+    if(!it){ it={id:uid(),name,category:'',qty:1,condition:'Good',notes:''}; r.inventory.push(it); }
+    if(sp){
+      const need=Math.max(1,+sp.dataset.stdqty||1);
+      it.qty=Math.max(need,+it.qty||0);
+      if(it.condition==='Missing') it.condition='Good';
+      toast(`${name} marked as here`);
+    } else {
+      it.qty=0; it.condition='Missing';
+      toast(`${name} marked missing`);
+    }
+    r.updated=Date.now(); save(); refresh(); return;
+  }
+  if(id==='allPresent'){
+    let n=0;
+    standardState(r).forEach(x=>{
+      if(x.state!=='unchecked') return;
+      r.inventory.push({id:uid(),name:x.name,category:'',qty:x.need,condition:'Good',notes:''});
+      n++;
+    });
+    r.updated=Date.now(); save(); refresh();
+    toast(n?`${n} item${n===1?'':'s'} marked present`:'Nothing left to check');
+    return;
+  }
+  if(id==='resetChecks'){
+    const names=new Set(requiredFor(r).map(x=>nkey(x.name)));
+    const touched=r.inventory.filter(i=>names.has(nkey(i.name)));
+    if(!touched.length){ toast('Nothing to clear'); return; }
+    if(!confirm(`Clear the ${touched.length} standard checks in room ${r.number}? Items you added yourself and any notes on them are removed too.`)) return;
+    r.inventory=r.inventory.filter(i=>!names.has(nkey(i.name)));
+    r.updated=Date.now(); save(); refresh(); toast('Checks cleared');
+    return;
+  }
+  const gr=t.closest('[data-gotoroom]');
+  if(gr){ flushSave(); return showRoom(gr.dataset.gotoroom); }
+
+  const qu=t.closest('[data-qtyup]'), qd=t.closest('[data-qtydown]');
+  if(qu||qd){
+    const it=r.inventory.find(x=>x.id===(qu||qd).dataset[qu?'qtyup':'qtydown']);
+    if(it){
+      it.qty=Math.max(0,Math.min(99,(+it.qty||0)+(qu?1:-1)));
+      if(it.qty===0) it.condition='Missing';
+      else if(it.condition==='Missing') it.condition='Good';
+      r.updated=Date.now(); save(); refresh();
+    }
+    return;
+  }
+  const cd=t.closest('[data-cond]');
+  if(cd){
+    const it=r.inventory.find(x=>x.id===cd.dataset.cond);
+    if(it){
+      const i2=CONDITIONS.indexOf(it.condition);
+      it.condition=CONDITIONS[(i2<0?0:i2+1)%CONDITIONS.length];
+      if(it.condition==='Missing') it.qty=0;
+      else if(+it.qty===0) it.qty=1;
+      r.updated=Date.now(); save(); refresh();
+    }
+    return;
+  }
+  const mv=t.closest('[data-moveitem]'), mj=t.closest('[data-movejob]');
+  if(mv||mj){
+    const sel=document.getElementById('moveTarget');
+    const target=sel&&room(sel.value);
+    if(!target){ toast('Pick a room to move it to'); return; }
+    if(mv){
+      const it=r.inventory.find(x=>x.id===mv.dataset.moveitem);
+      if(it){
+        r.inventory=r.inventory.filter(x=>x!==it);
+        const clash=target.inventory.find(x=>nkey(x.name)===nkey(it.name));
+        if(clash) Object.assign(clash,{qty:it.qty,condition:it.condition,notes:it.notes||clash.notes});
+        else target.inventory.push({...it,id:uid()});
+        toast(`${it.name} moved to room ${target.number}`);
+      }
+    } else {
+      const w=r.work.find(x=>x.id===mj.dataset.movejob);
+      if(w){
+        r.work=r.work.filter(x=>x!==w);
+        if(!target.work.some(x=>nkey(x.task)===nkey(w.task))) target.work.push({...w,id:uid()});
+        toast(`${w.task} moved to room ${target.number}`);
+      }
+    }
+    r.updated=Date.now(); target.updated=Date.now();
+    save(); closeSheet(); refresh();
+    return;
+  }
+  const wd=t.closest('[data-workdone]');
+  if(wd){
+    const w=r.work.find(x=>x.id===wd.dataset.workdone);
+    if(w){ w.status='complete'; r.updated=Date.now(); save(); toast(`${w.task} — done`); refresh(); }
+    return;
+  }
+  const md=t.closest('[data-markdone]');
+  if(md){ r.status='complete'; r.updated=Date.now(); save(); toast(`Room ${r.number} marked complete`); refresh(); return; }
+  const ah=t.closest('[data-addhere]'); if(ah) return sheetItem(null);
+  const aj=t.closest('[data-addjob]');  if(aj) return sheetWork(null);
+  const ei=t.closest('[data-edititem]'); if(ei) return sheetItem(ei.dataset.edititem);
+  const ew=t.closest('[data-editwork]'); if(ew) return sheetWork(ew.dataset.editwork);
+
+  const ws=t.closest('[data-workstatus]');
+  if(ws){
+    const w=r.work.find(x=>x.id===ws.dataset.workstatus);
+    if(w){ w.status=nextStatus(w.status); r.updated=Date.now(); save(); refresh(); }
+    return;
+  }
+
+  const ss=t.closest('[data-savestd]');
+  if(ss){
+    saveStandard(ss.dataset.savestd,document.getElementById('stdList').value);
+    state.standardUpdated=Date.now();
+    closeSheet();
+    if(currentRoomId) renderRoom(); else renderBoard();
+    toast('Room standard saved'); return;
+  }
+  const si=t.closest('[data-saveitem]');
+  if(si){
+    const name=document.getElementById('iName').value.replace(/\s+/g,' ').trim();
+    if(!name) return toast('Give the item a name');
+    const payload={name,qty:Math.max(0,parseInt(document.getElementById('iQty').value||'1',10)),
+      condition:document.getElementById('iCond').value, notes:document.getElementById('iNotes').value.trim()};
+    const existing=si.dataset.saveitem?r.inventory.find(x=>x.id===si.dataset.saveitem):null;
+    if(existing) Object.assign(existing,payload);
+    else r.inventory.push({id:uid(),category:'',...payload});
+    r.updated=Date.now(); save(); closeSheet(); refresh(); return;
+  }
+  const di=t.closest('[data-delitem]');
+  if(di){ r.inventory=r.inventory.filter(x=>x.id!==di.dataset.delitem); r.updated=Date.now(); save(); closeSheet(); refresh(); return; }
+
+  const sw=t.closest('[data-savework]');
+  if(sw){
+    const task=document.getElementById('wTask').value.replace(/\s+/g,' ').trim();
+    if(!task) return toast('Describe what needs doing');
+    const payload={task,priority:document.getElementById('wPri').value,
+      status:document.getElementById('wStat').value, notes:document.getElementById('wNotes').value.trim()};
+    const existing=sw.dataset.savework?r.work.find(x=>x.id===sw.dataset.savework):null;
+    if(existing) Object.assign(existing,payload);
+    else r.work.push({id:uid(),...payload});
+    r.updated=Date.now(); save(); closeSheet(); refresh(); return;
+  }
+  const dw=t.closest('[data-delwork]');
+  if(dw){ r.work=r.work.filter(x=>x.id!==dw.dataset.delwork); r.updated=Date.now(); save(); closeSheet(); refresh(); return; }
+});
+
+document.getElementById('scrim').addEventListener('click',closeSheet);
+document.getElementById('lightbox').addEventListener('click',e=>{
+  if(e.target.closest('#lbClose')) return;
+  const im=document.getElementById('lbImg');
+  if(im.src.startsWith('blob:')) URL.revokeObjectURL(im.src);
+  im.removeAttribute('src');
+  document.getElementById('lightbox').classList.remove('on');
+});
+document.getElementById('search').addEventListener('input',e=>{query=e.target.value;renderBoard()});
+document.getElementById('typeFilter').addEventListener('change',e=>{typeFilter=e.target.value;renderBoard()});
+
+document.addEventListener('input',e=>{
+  const r=room(currentRoomId); if(!r) return;
+  if(e.target.id==='rNumber'){
+    r.number=e.target.value; r.updated=Date.now(); save();
+    document.getElementById('title').innerHTML=`Room ${esc(r.number)}<span class="sub">${esc(r.type||'Not classified')}</span>`;
+    return;
+  }
+  if(e.target.id==='rType'){
+    r.type=e.target.value; r.updated=Date.now(); save();
+    document.getElementById('title').innerHTML=`Room ${esc(r.number)}<span class="sub">${esc(r.type||'Not classified')}</span>`;
+    return;
+  }
+  if(e.target.id==='rUpgrade'){
+    r.upgradeTo=e.target.value; r.updated=Date.now(); save();
+    setTimeout(renderRoom,0);   // let the picker finish closing before re-rendering
+    return;
+  }
+  if(e.target.id==='rUpNote'){r.upgradeNote=e.target.value;r.updated=Date.now();save()}
+  if(e.target.id==='rFloor'){r.floor=e.target.value;r.updated=Date.now();save()}
+  if(e.target.id==='rNotes'){r.notes=e.target.value;r.updated=Date.now();save()}
+});
+
+/* ---------------- boot ---------------- */
+(async function(){
+  let readFailed=false;
+  try{
+    await openDB();
+    const saved=await idbGet('kv','state');
+    if(saved && !Array.isArray(saved.rooms)){
+      // Something is there but unreadable. Keep a copy and refuse to write over it.
+      try{ await idbPut('kv',{ts:Date.now(),raw:saved},'state.unreadable'); }catch(e){}
+      throw new Error('corrupt');
+    }
+    if(saved && Array.isArray(saved.rooms)){
+      state=Object.assign(state,saved);
+      if(typeof state.property!=='string'||!state.property) state.property='Home Away Inn';
+      normalizeStandard();
+      state.rooms=state.rooms.filter(r=>r&&typeof r==='object').map(normalizeRoom);
+      if(!state.stdSeeded && !standardIsSet()){ state.standard.all=[...DEFAULT_STANDARD]; state.stdSeeded=true; save(); }
+      if(standardIsSet()) state.stdSeeded=true;
+    }
+  }catch(e){ readFailed=true; }
+  normalizeStandard();
+
+  if(readFailed){
+    document.getElementById('boardEmpty').classList.add('hidden');
+    document.getElementById('board').innerHTML=
+      `<div class="warnbar" style="grid-column:1/-1">
+        <strong>Could not read saved data.</strong> Nothing has been written over — your rooms may still be there.
+        Close every other tab running this app and reload the page. If it keeps failing, check that the browser
+        is not in private mode. Editing is switched off until a clean read succeeds.
+      </div>`;
+    document.getElementById('fab').style.display='none';
+    return;   // loadOK stays false, so nothing can overwrite what is stored
+  }
+
+  /* Opened straight from a downloaded file. Every copy in the Downloads
+     folder — room-survey.html, room-survey-1.html and so on — is a separate
+     app with separate storage. This is how ten rooms went missing. */
+  try{
+    if(location.protocol==='file:'){
+      const fname=decodeURIComponent((location.pathname||'').split('/').pop()||'this file');
+      const numbered=/-\d+\.html?$/i.test(fname);
+      const w=document.getElementById('fileWarn');
+      w.innerHTML=`<strong>Running from a downloaded file: ${esc(fname)}</strong><br>
+        Data is tied to this exact file. Opening a differently named copy shows an empty survey —
+        the rooms are still under the old file, not lost.
+        ${numbered?'<br><strong>This name ends in a number, so an earlier copy exists in Downloads and probably holds your rooms.</strong>':''}
+        <br>Before switching copies: Menu → Save backup file, then Restore in the new one.
+        Better still, host it at one web address and always open that.`;
+      w.classList.remove('hidden');
+    }
+  }catch(e){}
+
+  loadOK=true;
+
+  if(!state.rooms.length && state.seedApplied!==SEED_ID){
+    const n=await applySeed();
+    if(n){
+      const w=document.getElementById('backupWarn');
+      w.innerHTML=`<strong>Loaded your recovered survey — ${n} rooms, ${state.rooms.reduce((a,r)=>a+r.photos.length,0)} photos.</strong><br>
+        This is the backup from 20 Aug. If you had newer work than that, it is under a different copy of the app —
+        check before adding to this one. From here on, save a backup after every session.`;
+      w.classList.remove('hidden');
+      w.dataset.seeded='1';
+    }
+  }
+
+  if(!state.stdSeeded && !standardIsSet()){ state.standard.all=[...DEFAULT_STANDARD]; state.stdSeeded=true; save(); }
+  await snapshot('startup');
+  showBoard();
+  syncNow(true);
+  try{
+    const orphans=(await idbAll('photos')).length;
+    const linked=state.rooms.reduce((n,r)=>n+r.photos.length,0);
+    if(!state.rooms.length && orphans>0){
+      toast(`${orphans} photos found with no rooms — Menu → Recover`);
+    } else if(orphans-linked>5){
+      toast(`${orphans-linked} unlinked photos — Menu → Recover may restore them`);
+    }
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
