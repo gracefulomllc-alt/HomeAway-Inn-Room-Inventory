@@ -220,6 +220,10 @@ textarea{min-height:70px;resize:vertical}
 .chev{display:inline-block;margin-left:7px;font-style:normal;transition:transform .15s ease;transform:rotate(0deg)}
 .card.collapsed .chev{transform:rotate(-90deg)}
 .card.collapsed > .body{display:none}
+.identity{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:11px}
+.identity .idmain{flex:1;min-width:130px}
+.identity .idnum{font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.1}
+.identity .idtype{font-size:12.5px;color:var(--muted);margin-top:2px}
 .donebar{
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   background:#eaf5f0;border:1px solid #a6cfc0;color:#155e46;
@@ -1066,6 +1070,13 @@ function renderRoom(){
 
     <div class="card">
       <div class="body">
+        <div class="identity">
+          <div class="idmain">
+            <div class="idnum">Room ${esc(r.number)}</div>
+            <div class="idtype">${esc(r.type||'Not classified')}${r.floor?' · '+esc(r.floor):''}</div>
+          </div>
+          <button class="btn sm" data-editdetails="1">Edit number &amp; type</button>
+        </div>
         ${r.status==='complete'?`<div class="donebar">
           <span><strong>Marked complete.</strong> You can still change anything below — it stays complete unless you reopen it.</span>
           <button class="btn sm" data-reopen="${r.id}">Reopen</button>
@@ -1588,6 +1599,7 @@ function sheetRoomActions(id){
     <p class="hint" style="margin-bottom:12px">${esc(r.type||'Not classified')} · ${r.inventory.length} items · ${r.photos.length} photos · ${t.length} outstanding</p>
     <div class="btnrow">
       <button class="btn primary full" data-openroom="${r.id}">Open room</button>
+      <button class="btn full" data-renameroom="${r.id}">Change room number</button>
       ${r.status!=='complete'
         ? `<button class="btn full" data-quickcomplete="${r.id}">Mark complete</button>`
         : `<button class="btn full" data-reopen="${r.id}">Reopen for editing</button>`}
@@ -2390,12 +2402,41 @@ document.addEventListener('click', async e=>{
     if(!picked.size){ toast('Tap the rooms you want to remove first'); return; }
     return deleteRooms([...picked]);
   }
+  const rn=t.closest('[data-renameroom]');
+  if(rn){
+    const rr=room(rn.dataset.renameroom);
+    if(rr){
+      const v=prompt(`Room number for this room:`,rr.number);
+      if(v!==null && String(v).trim()){
+        const want=String(v).replace(/\s+/g,' ').trim();
+        const clash=state.rooms.find(x=>x.id!==rr.id && nkey(x.number)===nkey(want));
+        if(clash) alert(`Room ${want} already exists. Pick a different number.`);
+        else{ rr.number=want; rr.updated=Date.now(); save();
+              state.rooms.sort((a,b)=>String(a.number).localeCompare(String(b.number),undefined,{numeric:true}));
+              toast(`Renamed to room ${want}`); }
+      }
+    }
+    closeSheet();
+    if(currentRoomId===rn.dataset.renameroom) renderRoom(); else renderBoard();
+    return;
+  }
   const op=t.closest('[data-openroom]');
   if(op){ closeSheet(); return showRoom(op.dataset.openroom); }
   const pm=t.closest('[data-pickmode]');
   if(pm){ closeSheet(); pickMode=true; picked.clear(); clearFilters(); showBoard(); toast('Tap rooms to select them'); return; }
   const kr=t.closest('[data-killroom]');
   if(kr){ closeSheet(); return deleteRooms([kr.dataset.killroom]); }
+  const ed=t.closest('[data-editdetails]');
+  if(ed){
+    closeSheet();
+    if(!sectionOpen('details')) toggleSection('details');
+    renderRoom();
+    const el=document.getElementById('sec-details');
+    if(el&&el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'start'});
+    const box=document.getElementById('rNumber');
+    if(box&&box.focus) setTimeout(()=>{ try{ box.focus(); box.select&&box.select(); }catch(e){} },250);
+    return;
+  }
   const ro=t.closest('[data-reopen]');
   if(ro){
     const rr=room(ro.dataset.reopen);
@@ -2787,6 +2828,9 @@ document.addEventListener('input',e=>{
   const r=room(currentRoomId); if(!r) return;
   if(e.target.id==='rNumber'){
     r.number=e.target.value; r.updated=Date.now(); save();
+    const dupe=state.rooms.some(x=>x.id!==r.id && nkey(x.number)===nkey(r.number) && nkey(r.number));
+    e.target.style.borderColor = dupe ? 'var(--needs)' : '';
+    if(dupe) toast(`Room ${r.number} already exists`);
     document.getElementById('title').innerHTML=`Room ${esc(r.number)}<span class="sub">${esc(r.type||'Not classified')}</span>`;
     return;
   }
