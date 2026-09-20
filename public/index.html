@@ -775,6 +775,30 @@ function todoLineHTML(r,t){
 }
 const todoCounts=r=>roomTodos(r).reduce((a,t)=>{a[t.kind]=(a[t.kind]||0)+1;return a},{});
 
+/* Roll every room's gaps into one per-item tally: what is missing, and in
+   how many rooms out of how many that item applies to. */
+function shortfallSummary(rooms){
+  const tally=new Map();
+  rooms.forEach(r=>{
+    requiredFor(r).forEach(req=>{
+      const k=nkey(req.name);
+      if(!tally.has(k)) tally.set(k,{name:req.name,applies:0,absent:0,short:0,rooms:[],need:req.qty});
+      const e=tally.get(k);
+      e.applies++;
+      e.need=Math.max(e.need,req.qty);
+    });
+    missingFor(r).forEach(m=>{
+      const e=tally.get(nkey(m.name));
+      if(!e) return;
+      if(m.have===0) e.absent++; else e.short++;
+      e.rooms.push(r.number);
+    });
+  });
+  return [...tally.values()]
+    .filter(e=>e.absent+e.short>0)
+    .sort((a,b)=>(b.absent+b.short)-(a.absent+a.short) || String(a.name).localeCompare(String(b.name)));
+}
+
 const missLabel = m => m.need>1 ? `${m.name} — ${m.have} of ${m.need}` : m.name;
 /* unchecked | present | short | missing — drives the room panel */
 function standardState(r){
@@ -1885,6 +1909,13 @@ async function exportXlsx(){
   add(rooms,'Rooms',[10,17,17,12,13,12,18,10,8,42,13]);
   add(up,'Upgrade Opportunities',[10,17,17,44,10,50]);
   if(bel.length>1) add(bel,'Below Standard',[10,18,30,10,9]);
+  const sf=shortfallSummary(state.rooms);
+  if(sf.length){
+    const sfRows=[['Item','Required per room','Rooms it applies to','Rooms missing it','Absent','Short','Percent short','Rooms']];
+    sf.forEach(e=>sfRows.push([e.name,e.need,e.applies,e.absent+e.short,e.absent,e.short,
+      Math.round((e.absent+e.short)/e.applies*100)+'%',e.rooms.join(', ')]));
+    add(sfRows,'Missing Summary',[26,16,18,16,9,8,12,50]);
+  }
   add(inv,'Inventory',[10,16,24,6,11,40]);
   add(work,'Work Items',[10,30,10,13,40]);
 
@@ -1997,6 +2028,19 @@ async function exportReport(scope,photoMode,newPage){
     ${below.map(x=>`<tr><td>${esc(x.r.number)}</td><td>${esc(x.r.type||'Not classified')}</td><td>${x.m.map(y=>esc(missLabel(y))).join(', ')}</td></tr>`).join('')}
     </tbody></table></section>` : '';
 
+  const shortfalls=shortfallSummary(list);
+  const shortSummary = shortfalls.length ? `<section><h2>What is missing across the property</h2>
+    <p class="meta">${shortfalls.length} different item${shortfalls.length===1?'':'s'} fall short somewhere. Counts are rooms the item is required in.</p>
+    <table><thead><tr><th>Item</th><th>Missing in</th><th>Absent</th><th>Short</th><th>Rooms</th></tr></thead><tbody>
+    ${shortfalls.map(e=>`<tr>
+      <td><strong>${esc(e.name)}</strong>${e.need>1?` <span class="meta">(${e.need} needed)</span>`:''}</td>
+      <td><strong>${e.absent+e.short} of ${e.applies}</strong> rooms<br><span class="meta">${Math.round((e.absent+e.short)/e.applies*100)}%</span></td>
+      <td>${e.absent||'—'}</td>
+      <td>${e.short||'—'}</td>
+      <td>${esc(e.rooms.join(', '))}</td>
+    </tr>`).join('')}
+    </tbody></table></section>` : '';
+
   const summary = cands.length ? `<section><h2>Upgrade opportunities</h2>
     <p class="meta">${cands.length} room${cands.length===1?'':'s'} could be re-classified once the listed work is done.</p>
     <table><thead><tr><th>Room</th><th>Currently</th><th>Could be</th><th>What's holding it back</th><th>Open jobs</th></tr></thead><tbody>
@@ -2017,6 +2061,7 @@ async function exportReport(scope,photoMode,newPage){
         ${sc.complete} complete · ${sc.progress} in progress · ${sc.needs} needs work · ${sc.notdone} not done<br>
         ${esc(typeLine)}</p>
       </section>
+      ${shortSummary}
       ${gapSummary}
       ${summary}
       ${parts.join('')}
