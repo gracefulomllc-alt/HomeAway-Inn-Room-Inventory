@@ -498,25 +498,13 @@ const STATUSES = [
 ];
 const CONDITIONS = ['Good','Fair','Poor','Damaged','Missing'];
 const ASSIGNEES = ['Handyman','Housekeeping','Front desk','Management'];
-/* The usual suspects in a hotel room, grouped the way a handyman thinks. */
-const HM_FIXES = {
-  'Bathroom':['Toilet running','Toilet clogged','Toilet seat loose','Leaky faucet','Slow drain','Shower head leaking',
-    'Low water pressure','No hot water','Exhaust fan loud or not working','Re-caulk tub or shower','Towel bar loose',
-    'Toilet paper holder loose','Soap holder loose','Mirror cracked','Grout cracked or missing'],
-  'Electrical':['Light bulb out','Outlet not working','Lamp broken','Light switch broken','TV won\'t turn on',
-    'TV remote not working','No cable or picture','Smoke detector chirping','Alarm clock broken'],
-  'Heating & cooling':['AC not cooling','AC noisy','AC leaking water','Heater not working','Thermostat not working','AC filter dirty'],
-  'Doors & windows':['Door lock or key card not working','Door won\'t latch','Deadbolt or security latch broken',
-    'Peephole missing or damaged','Door sticking','Window won\'t lock','Window screen torn','Blinds broken','Curtain rod down'],
-  'Walls & floors':['Paint touch-up','Hole in drywall','Water stain on ceiling','Carpet stain','Carpet torn or lifting',
-    'Baseboard loose','Tile cracked'],
-  'Furniture & appliances':['Bed frame broken','Headboard loose','Drawer stuck or broken','Chair wobbly or broken',
-    'Desk damaged','Nightstand damaged','Microwave not working','Fridge not cooling','Coffee maker not working','Luggage rack broken'],
-  'Other':['Pest sighting','Bad odor','Wi-Fi not working']
-};
+/* Short, general list — enough to point the handyman the right way,
+   with the detail typed underneath. */
+const HM_FIXES = ['Leak or plumbing','Toilet','Clogged drain','No hot water','Light out','Outlet or switch',
+  'TV or remote','AC or heat','Smoke detector','Door or lock','Window or blinds','Wall or paint',
+  'Carpet or floor','Furniture','Appliance','Pests'];
 function fixOptions(placeholder){
-  return `<option value="">${esc(placeholder)}</option>`+Object.entries(HM_FIXES).map(([g,list])=>
-    `<optgroup label="${esc(g)}">${list.map(x=>`<option>${esc(x)}</option>`).join('')}</optgroup>`).join('');
+  return `<option value="">${esc(placeholder)}</option>`+HM_FIXES.map(x=>`<option>${esc(x)}</option>`).join('');
 }
 const ROOM_TYPES = ['Superior Double','Superior Single','Economy Double','Economy Single','Storage room'];
 /* Not let to guests, so the guest-room baseline doesn't apply. Only its own
