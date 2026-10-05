@@ -196,6 +196,48 @@ textarea{min-height:70px;resize:vertical}
 .todohead .rn{font-family:var(--mono);font-size:16px;font-weight:600;flex:none}
 .todohead .rt{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .todohead .cnt{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--needs);flex:none}
+.hmhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.hmbig{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1}
+.seg{display:flex;border:1px solid var(--line-2);border-radius:9px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;min-height:40px}
+.seg button.on{background:var(--ink);color:#fff}
+.hmadd{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.hmadd select{flex:0 0 auto;width:auto;min-width:100px}
+.hmadd input{flex:1;min-width:150px}
+.hmadd.small{margin-top:10px}
+.hmjob{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.hmjob:last-of-type{border-bottom:0}
+.hmtxt{flex:1;min-width:160px}
+.hmtask{font-weight:600;font-size:15px;word-break:break-word}
+.hmnote{font-size:12.5px;color:var(--muted);margin-top:2px;white-space:pre-line}
+.hmstate{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--muted);margin-top:4px}
+.hmjob.st-progress .hmstate{color:var(--progress)}
+.hmjob.st-needs .hmstate{color:var(--needs)}
+.hmjob.st-complete .hmstate{color:var(--complete)}
+.hmjob.st-complete .hmtask{text-decoration:line-through;color:var(--muted)}
+.hmjob.st-broken .hmstate{color:var(--needs)}
+.hmpri{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  background:#fbeee9;color:#93341a;border-radius:5px;padding:2px 6px;vertical-align:middle}
+.hmbtns{display:flex;gap:6px;flex-wrap:wrap}
+.hmbtns .btn{min-height:40px}
+.btn.hmdone{background:var(--complete);border-color:var(--complete);color:#fff}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button{flex:1;border:1px solid var(--line);background:#fff;border-radius:9px;
+  padding:11px 8px;font-size:13.5px;font-weight:600;cursor:pointer;min-height:44px}
+.tabs button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.totwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.tot{width:100%;border-collapse:collapse;font-size:13px;min-width:330px}
+table.tot th{text-align:right;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);padding:6px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+table.tot th:first-child{text-align:left}
+table.tot td{padding:9px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+table.tot td.num{text-align:right;font-family:var(--mono);font-weight:700;white-space:nowrap}
+table.tot td.nm{font-weight:600}
+table.tot .sub2{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:2px}
+table.tot .sub2.miss{color:var(--needs)}
+table.tot td.bad{color:var(--needs)}
+table.tot td.warn{color:var(--progress)}
+table.tot td.ok{color:var(--complete)}
 .legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
 .legend span{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
 .tilesyms{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
@@ -432,6 +474,7 @@ const STATUSES = [
   {k:'complete', label:'Complete'}
 ];
 const CONDITIONS = ['Good','Fair','Poor','Damaged','Missing'];
+const ASSIGNEES = ['Handyman','Housekeeping','Front desk','Management'];
 const ROOM_TYPES = ['Superior Double','Superior Single','Economy Double','Economy Single','Storage room'];
 /* Not let to guests, so the guest-room baseline doesn't apply. Only its own
    list counts — leave that empty and it's simply never flagged. */
@@ -799,6 +842,40 @@ function shortfallSummary(rooms){
     .sort((a,b)=>(b.absent+b.short)-(a.absent+a.short) || String(a.name).localeCompare(String(b.name)));
 }
 
+/* Property-wide totals per item: units on hand, units short, and how many
+   actually work. Covers the standard plus anything staff have added. */
+function inventoryTotals(rooms){
+  const map=new Map();
+  const get=name=>{
+    const k=nkey(name);
+    if(!map.has(k)) map.set(k,{name,required:0,requiredIn:0,units:0,inRooms:0,
+      good:0,fair:0,poor:0,damaged:0,missingUnits:0,shortUnits:0,missingRooms:[]});
+    return map.get(k);
+  };
+  rooms.forEach(r=>{
+    requiredFor(r).forEach(req=>{ const e=get(req.name); e.required+=req.qty; e.requiredIn++; });
+    r.inventory.forEach(i=>{
+      const e=get(i.name);
+      const q=Math.max(0,+i.qty||0);
+      if(i.condition==='Missing'||q===0){ e.missingUnits+=Math.max(1,q||1); return; }
+      e.units+=q; e.inRooms++;
+      if(i.condition==='Fair') e.fair+=q;
+      else if(i.condition==='Poor') e.poor+=q;
+      else if(i.condition==='Damaged') e.damaged+=q;
+      else e.good+=q;
+    });
+    missingFor(r).forEach(m=>{
+      const e=get(m.name);
+      e.shortUnits+=Math.max(0,m.need-m.have);
+      e.missingRooms.push(r.number);
+    });
+  });
+  return [...map.values()]
+    .map(e=>({...e, working:e.good+e.fair, attention:e.poor+e.damaged}))
+    .sort((a,b)=>b.shortUnits-a.shortUnits || b.attention-a.attention
+      || String(a.name).localeCompare(String(b.name)));
+}
+
 const missLabel = m => m.need>1 ? `${m.name} — ${m.have} of ${m.need}` : m.name;
 /* unchecked | present | short | missing — drives the room panel */
 function standardState(r){
@@ -866,6 +943,7 @@ function normalizeRoom(r){
     w.id=w.id||uid(); w.task=String(w.task||'Untitled job');
     if(!STATUSES.some(s=>s.k===w.status)) w.status='notdone';
     if(typeof w.priority!=='string') w.priority='Normal';
+    if(!ASSIGNEES.includes(w.assignee)) w.assignee='Handyman';
     if(typeof w.notes!=='string') w.notes='';
   });
   if(!Number.isFinite(r.updated)) r.updated=Date.now();
@@ -1333,6 +1411,115 @@ function refresh(){
   else if(currentRoomId) renderRoom();
   else renderBoard();
 }
+let todoTab='room';
+function renderTotals(){
+  const rows=inventoryTotals(state.rooms);
+  const shortTotal=rows.reduce((n,e)=>n+e.shortUnits,0);
+  const attnTotal=rows.reduce((n,e)=>n+e.attention,0);
+  return `
+    <div class="card">
+      <h2>Every item across ${state.rooms.length} rooms <span class="counter">${shortTotal} to buy · ${attnTotal} to fix</span></h2>
+      <div class="body">
+        <p class="hint" style="margin:0 0 10px"><strong>Short</strong> is how many units to buy. <strong>Working</strong> counts Good and Fair. <strong>Fix</strong> counts Poor and Damaged.</p>
+        <div class="totwrap"><table class="tot">
+          <thead><tr><th>Item</th><th>Have</th><th>Short</th><th>Working</th><th>Fix</th></tr></thead>
+          <tbody>
+          ${rows.length?rows.map(e=>`<tr>
+            <td class="nm">${esc(e.name)}
+              ${e.requiredIn?`<span class="sub2">needs ${e.required} across ${e.requiredIn} rooms</span>`:`<span class="sub2">not in the standard</span>`}
+              ${e.missingRooms.length?`<span class="sub2 miss">missing in ${esc(e.missingRooms.join(', '))}</span>`:''}
+            </td>
+            <td class="num">${e.units}</td>
+            <td class="num ${e.shortUnits?'bad':''}">${e.shortUnits||'—'}</td>
+            <td class="num ok">${e.working||'—'}</td>
+            <td class="num ${e.attention?'warn':''}">${e.attention||'—'}</td>
+          </tr>`).join(''):`<tr><td colspan="5" style="color:var(--muted);padding:18px 6px">Nothing recorded yet.</td></tr>`}
+          </tbody></table></div>
+      </div>
+    </div>`;
+}
+let hmFilter='open';
+/* Everything the handyman needs, room by room: jobs assigned to him, plus
+   items staff have marked Poor or Damaged. Anyone can add to it, and either
+   he or staff can tick things off. */
+function handymanRooms(){
+  return state.rooms.map(r=>{
+    const jobs=r.work.filter(w=>w.assignee==='Handyman' &&
+      (hmFilter==='open' ? w.status!=='complete' : w.status==='complete'));
+    const broken=hmFilter==='open'
+      ? r.inventory.filter(i=>i.condition==='Poor'||i.condition==='Damaged') : [];
+    return {r,jobs,broken};
+  }).filter(g=>g.jobs.length||g.broken.length);
+}
+function renderHandyman(){
+  const groups=handymanRooms();
+  const jobsN=groups.reduce((n,g)=>n+g.jobs.length,0);
+  const brokenN=groups.reduce((n,g)=>n+g.broken.length,0);
+  const word={notdone:'To do',progress:'Started',needs:'Needs parts',complete:'Done'};
+  const t=ms=>new Date(ms).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  return `
+    <div class="card">
+      <div class="body">
+        <div class="hmhead">
+          <div><div class="hmbig">${jobsN+brokenN}</div>
+            <div class="hint" style="margin:0">${hmFilter==='open'
+              ? `${jobsN} job${jobsN===1?'':'s'}${brokenN?` + ${brokenN} damaged item${brokenN===1?'':'s'}`:''} across ${groups.length} room${groups.length===1?'':'s'}`
+              : `finished across ${groups.length} room${groups.length===1?'':'s'}`}</div></div>
+          <div class="seg">
+            <button class="${hmFilter==='open'?'on':''}" data-hmfilter="open">Open</button>
+            <button class="${hmFilter==='done'?'on':''}" data-hmfilter="done">Done</button>
+          </div>
+        </div>
+        ${hmFilter==='open'?`<div class="hmadd">
+          <select id="hmAddRoom">${state.rooms.map(r=>`<option value="${r.id}">Room ${esc(r.number)}</option>`).join('')}</select>
+          <input type="text" id="hmAddText" placeholder="Add a job for the handyman…" autocomplete="off">
+          <button class="btn primary sm" data-hmaddany="1">Add</button>
+        </div>`:''}
+      </div>
+    </div>
+    ${groups.length?groups.map(({r,jobs,broken})=>`
+      <div class="card">
+        <button class="todohead" data-room="${r.id}">
+          <span class="rn">${esc(r.number)}</span>
+          <span class="rt">${esc(r.type||'Not classified')}</span>
+          <span class="cnt">${jobs.length+broken.length}</span>
+          <span style="color:var(--muted)">›</span>
+        </button>
+        <div class="body">
+          ${jobs.map(w=>`<div class="hmjob st-${w.status}">
+            <div class="hmtxt">
+              <div class="hmtask">${esc(w.task)}${w.priority==='High'||w.priority==='Urgent'?` <span class="hmpri">${esc(w.priority)}</span>`:''}</div>
+              ${w.notes?`<div class="hmnote">${esc(w.notes)}</div>`:''}
+              <div class="hmstate">${word[w.status]||'To do'}${w.status==='complete'&&w.doneAt?' · '+t(w.doneAt):''}</div>
+            </div>
+            <div class="hmbtns">
+              ${w.status==='complete'
+                ? `<button class="btn sm" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="notdone">Reopen</button>`
+                : `<button class="btn sm hmdone" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="complete">✓ Done</button>
+                   <button class="btn sm ${w.status==='progress'?'pick':''}" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="progress">Started</button>
+                   <button class="btn sm ${w.status==='needs'?'pickbad':''}" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="needs">Needs parts</button>`}
+            </div>
+          </div>`).join('')}
+          ${broken.map(i=>`<div class="hmjob st-broken">
+            <div class="hmtxt">
+              <div class="hmtask">${esc(i.name)} <span class="hmpri">${esc(i.condition)}</span></div>
+              ${i.notes?`<div class="hmnote">${esc(i.notes)}</div>`:''}
+              <div class="hmstate">Reported ${esc(i.condition.toLowerCase())}</div>
+            </div>
+            <div class="hmbtns">
+              <button class="btn sm hmdone" data-troom="${r.id}" data-hmfixed="${i.id}">✓ Fixed</button>
+            </div>
+          </div>`).join('')}
+          ${hmFilter==='open'?`<div class="hmadd small">
+            <input type="text" id="hmIn-${r.id}" placeholder="Add another job in ${esc(r.number)}…" autocomplete="off">
+            <button class="btn sm" data-troom="${r.id}" data-hmadd="1">Add</button>
+          </div>`:''}
+        </div>
+      </div>`).join('')
+    : `<div class="card"><div class="empty">${hmFilter==='open'
+        ? 'Nothing on the list. Add a job above, or mark an item Poor or Damaged in any room and it shows up here.'
+        : 'Nothing finished yet.'}</div></div>`}`;
+}
 function renderTodo(){
   const groups=state.rooms.map(r=>({r,list:roomTodos(r)})).filter(g=>g.list.length);
   const total=groups.reduce((n,g)=>n+g.list.length,0);
@@ -1341,6 +1528,12 @@ function renderTodo(){
   const done=state.rooms.length-groups.length;
 
   document.getElementById('todoView').innerHTML=`
+    <div class="tabs">
+      <button class="${todoTab==='room'?'on':''}" data-todotab="room">By room</button>
+      <button class="${todoTab==='item'?'on':''}" data-todotab="item">By item</button>
+      <button class="${todoTab==='handyman'?'on':''}" data-todotab="handyman">Handyman</button>
+    </div>
+    ${todoTab==='handyman'?renderHandyman():todoTab==='item'?renderTotals():`
     <div class="card">
       <h2>Everything outstanding <span class="counter">${total} items · ${groups.length} rooms</span></h2>
       <div class="body">
@@ -1387,7 +1580,7 @@ function renderTodo(){
           </button>`).join('')}
       </div>
       <div class="body"><p class="hint" style="margin:0">Tap any of these to go back in and edit it.</p></div>
-    </div>`:''}
+    </div>`:''}`}
   `;
 }
 function showTodo(){
@@ -1795,6 +1988,7 @@ function sheetWork(workId){
       <label class="f"><span>Priority</span><select id="wPri">${['Low','Normal','High','Urgent'].map(p=>`<option ${w&&w.priority===p?'selected':(!w&&p==='Normal'?'selected':'')}>${p}</option>`).join('')}</select></label>
       <label class="f"><span>Status</span><select id="wStat">${STATUSES.map(s=>`<option value="${s.k}" ${w&&w.status===s.k?'selected':''}>${s.label}</option>`).join('')}</select></label>
     </div>
+    <label class="f"><span>Who it's for</span><select id="wWho">${ASSIGNEES.map(a=>`<option ${(w?w.assignee:'Handyman')===a?'selected':''}>${a}</option>`).join('')}</select></label>
     <label class="f"><span>Notes</span><textarea id="wNotes" placeholder="Parts needed, who's handling it, cost estimate…">${esc(w?w.notes:'')}</textarea></label>
     <div class="btnrow">
       <button class="btn primary" data-savework="${w?w.id:''}">Save job</button>
@@ -1880,7 +2074,7 @@ async function exportXlsx(){
 
   const rooms=[['Room','Type','Could be','Floor','Status','Items listed','Missing vs standard','Open jobs','Photos','Notes','Last updated']];
   const inv=[['Room','Category','Item','Qty','Condition','Notes']];
-  const work=[['Room','Job','Priority','Status','Notes']];
+  const work=[['Room','Job','For','Priority','Status','Done','Notes']];
   const up=[['Room','Current type','Could be','What\'s holding it back','Open jobs','Jobs listed']];
   const bel=[['Room','Type','Missing item','Required','Present']];
 
@@ -1895,7 +2089,8 @@ async function exportXlsx(){
     }
     missingFor(r).forEach(m=>bel.push([r.number,r.type||'Not classified',m.name,m.need,m.have]));
     r.inventory.forEach(i=>inv.push([r.number,i.category||'',i.name,i.qty,i.condition,i.notes]));
-    r.work.forEach(w=>work.push([r.number,w.task,w.priority,statusLabel(w.status),w.notes]));
+    r.work.forEach(w=>work.push([r.number,w.task,w.assignee||'Handyman',w.priority,statusLabel(w.status),
+      w.doneAt?new Date(w.doneAt).toLocaleString():'',w.notes]));
   });
 
   const wb=XLSX.utils.book_new();
@@ -1909,6 +2104,13 @@ async function exportXlsx(){
   add(rooms,'Rooms',[10,17,17,12,13,12,18,10,8,42,13]);
   add(up,'Upgrade Opportunities',[10,17,17,44,10,50]);
   if(bel.length>1) add(bel,'Below Standard',[10,18,30,10,9]);
+  const tot=inventoryTotals(state.rooms);
+  if(tot.length){
+    const tRows=[['Item','Required total','Required in rooms','On hand','Short (buy this many)','Working (good+fair)','Good','Fair','Poor','Damaged','Rooms missing it']];
+    tot.forEach(e=>tRows.push([e.name,e.required||'',e.requiredIn||'',e.units,e.shortUnits,e.working,
+      e.good,e.fair,e.poor,e.damaged,e.missingRooms.join(', ')]));
+    add(tRows,'Item Totals',[26,14,17,10,20,19,8,8,8,10,44]);
+  }
   const sf=shortfallSummary(state.rooms);
   if(sf.length){
     const sfRows=[['Item','Required per room','Rooms it applies to','Rooms missing it','Absent','Short','Percent short','Rooms']];
@@ -1917,7 +2119,7 @@ async function exportXlsx(){
     add(sfRows,'Missing Summary',[26,16,18,16,9,8,12,50]);
   }
   add(inv,'Inventory',[10,16,24,6,11,40]);
-  add(work,'Work Items',[10,30,10,13,40]);
+  add(work,'Work Items',[10,30,13,10,13,18,40]);
 
   try{
     const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
@@ -1944,6 +2146,7 @@ function sheetReport(){
         <option value="all">All rooms (${c.all})</option>
         <option value="filter">Rooms shown by current filter (${shown})</option>
         <option value="up">Upgrade candidates only (${candidates().length})</option>
+        <option value="handyman">Handyman work list (${handymanRooms().length} rooms)</option>
         <option value="open">Rooms with open jobs (${state.rooms.filter(r=>r.work.some(w=>w.status!=='complete')).length})</option>
       </select>
     </label>
@@ -1972,6 +2175,7 @@ async function exportReport(scope,photoMode,newPage){
   if(scope==='filter') list=visibleRooms();
   else if(scope==='up') list=candidates();
   else if(scope==='open') list=state.rooms.filter(r=>r.work.some(w=>w.status!=='complete'));
+  else if(scope==='handyman'){ const keep=hmFilter; hmFilter='open'; list=handymanRooms().map(g=>g.r); hmFilter=keep; }
   else list=state.rooms;
   if(!list.length){toast('No rooms match that selection');return}
 
@@ -2009,8 +2213,8 @@ async function exportReport(scope,photoMode,newPage){
           <p class="miss">${m.map(x=>esc(missLabel(x))).join(' · ')}</p>`:''})()}
         ${!r.inventory.length&&!r.work.length?`<p class="meta">No items or jobs recorded for this room yet.</p>`:''}
         ${r.work.length?`<h3>Work needed — ${r.work.length} jobs</h3><table>
-          <thead><tr><th>Job</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead><tbody>
-          ${r.work.map(x=>`<tr><td>${esc(x.task)}</td><td>${esc(x.priority)}</td><td>${statusLabel(x.status)}</td><td>${esc(x.notes)}</td></tr>`).join('')}</tbody></table>`:''}
+          <thead><tr><th>Job</th><th>For</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead><tbody>
+          ${r.work.map(x=>`<tr><td>${esc(x.task)}</td><td>${esc(x.assignee||'Handyman')}</td><td>${esc(x.priority)}</td><td>${statusLabel(x.status)}${x.doneAt?'<br><span class="meta">'+new Date(x.doneAt).toLocaleDateString()+'</span>':''}</td><td>${esc(x.notes)}</td></tr>`).join('')}</tbody></table>`:''}
       </section>`);
   }
 
@@ -2029,6 +2233,20 @@ async function exportReport(scope,photoMode,newPage){
     </tbody></table></section>` : '';
 
   const shortfalls=shortfallSummary(list);
+  const totals=inventoryTotals(list);
+  const buyTotal=totals.reduce((n,e)=>n+e.shortUnits,0);
+  const fixTotal=totals.reduce((n,e)=>n+e.attention,0);
+  const totalsSection = totals.length ? `<section><h2>Item totals across ${list.length} rooms</h2>
+    <p class="meta">${buyTotal} unit${buyTotal===1?'':'s'} to buy · ${fixTotal} in poor or damaged condition. Working counts Good and Fair.</p>
+    <table><thead><tr><th>Item</th><th>Required</th><th>On hand</th><th>Short</th><th>Working</th><th>Poor / damaged</th><th>Missing in</th></tr></thead><tbody>
+    ${totals.map(e=>`<tr>
+      <td><strong>${esc(e.name)}</strong></td>
+      <td>${e.requiredIn?`${e.required} across ${e.requiredIn} rooms`:'—'}</td>
+      <td>${e.units}</td><td>${e.shortUnits||'—'}</td><td>${e.working||'—'}</td><td>${e.attention||'—'}</td>
+      <td>${e.missingRooms.length?esc(e.missingRooms.join(', ')):'—'}</td>
+    </tr>`).join('')}
+    </tbody></table></section>` : '';
+
   const shortSummary = shortfalls.length ? `<section><h2>What is missing across the property</h2>
     <p class="meta">${shortfalls.length} different item${shortfalls.length===1?'':'s'} fall short somewhere. Counts are rooms the item is required in.</p>
     <table><thead><tr><th>Item</th><th>Missing in</th><th>Absent</th><th>Short</th><th>Rooms</th></tr></thead><tbody>
@@ -2061,6 +2279,7 @@ async function exportReport(scope,photoMode,newPage){
         ${sc.complete} complete · ${sc.progress} in progress · ${sc.needs} needs work · ${sc.notdone} not done<br>
         ${esc(typeLine)}</p>
       </section>
+      ${totalsSection}
       ${shortSummary}
       ${gapSummary}
       ${summary}
@@ -2178,9 +2397,18 @@ const richerItem=(a,b)=>{
   const score=x=>((x.notes&&x.notes.trim())?4:0)+(x.condition&&x.condition!=='Good'?2:0)+(+x.qty>1?1:0);
   return score(b)>score(a)?b:a;
 };
+const STATUS_RANK={notdone:0,progress:1,needs:2,complete:3};
 const richerJob=(a,b)=>{
-  const score=x=>((x.notes&&x.notes.trim())?4:0)+(x.status&&x.status!=='notdone'?2:0)+(x.priority&&x.priority!=='Normal'?1:0);
-  return score(b)>score(a)?b:a;
+  /* Two phones disagree about a job: the more-finished status wins, so the
+     handyman ticking something off is never undone by a stale phone. Notes
+     from both sides are kept. */
+  const ra=STATUS_RANK[a.status]||0, rb=STATUS_RANK[b.status]||0;
+  let win = rb>ra ? b : ra>rb ? a
+    : (((b.notes&&b.notes.trim())?1:0) > ((a.notes&&a.notes.trim())?1:0) ? b : a);
+  const other = win===a ? b : a;
+  const na=(win.notes||'').trim(), nb=(other.notes||'').trim();
+  if(nb && nb!==na && !na.includes(nb)) win={...win, notes: na ? na+'\n'+nb : nb};
+  return win;
 };
 function mergeRooms(cur,inc){
   const out=normalizeRoom(JSON.parse(JSON.stringify(cur)));
@@ -2498,6 +2726,20 @@ document.addEventListener('click', async e=>{
   }
   if(id==='syncBtn') return syncNow(false);
   if(id==='todoBtn') return showTodo();
+  const hf=t.closest('[data-hmfilter]');
+  if(hf){ hmFilter=hf.dataset.hmfilter; renderTodo(); return; }
+  if(t.closest('[data-hmaddany]')){
+    const rid=(document.getElementById('hmAddRoom')||{}).value;
+    const txt=((document.getElementById('hmAddText')||{}).value||'').replace(/\s+/g,' ').trim();
+    const rr=room(rid);
+    if(!rr){ toast('Pick a room'); return; }
+    if(!txt){ toast('Type what needs fixing'); return; }
+    rr.work.push({id:uid(),task:txt,priority:'Normal',status:'notdone',notes:'',assignee:'Handyman'});
+    rr.updated=Date.now(); save(); toast(`Added to room ${rr.number}`); renderTodo();
+    return;
+  }
+  const tt=t.closest('[data-todotab]');
+  if(tt){ todoTab=tt.dataset.todotab; renderTodo(); window.scrollTo(0,0); return; }
   if(id==='fab') return sheetAddRooms();
   if(id==='backBtn'){ flushSave(); return showBoard(); }
   if(id==='saveRoom') return saveRoomNow();
@@ -2669,7 +2911,7 @@ document.addEventListener('click', async e=>{
       r.work=r.work.filter(w=>w!==found);
       qw.classList.remove('on');
     } else {
-      r.work.push({id:uid(),task,priority:'Normal',status:'notdone',notes:''});
+      r.work.push({id:uid(),task,priority:'Normal',status:'notdone',notes:'',assignee:'Handyman'});
       qw.classList.add('on');
     }
     r.updated=Date.now(); save(); refresh(); return;
@@ -2763,6 +3005,37 @@ document.addEventListener('click', async e=>{
     save(); closeSheet(); refresh();
     return;
   }
+  const hs=t.closest('[data-hmstatus]');
+  if(hs){
+    const w=r.work.find(x=>x.id===hs.dataset.hmstatus);
+    if(w){
+      w.status=hs.dataset.st;
+      if(w.status==='complete') w.doneAt=Date.now(); else delete w.doneAt;
+      r.updated=Date.now(); save();
+      toast(w.status==='complete'?`Done — ${w.task}`:w.status==='notdone'?`Reopened — ${w.task}`:`${w.task} — ${w.status==='progress'?'started':'needs parts'}`);
+      refresh();
+    }
+    return;
+  }
+  const hx=t.closest('[data-hmfixed]');
+  if(hx){
+    const it=r.inventory.find(x=>x.id===hx.dataset.hmfixed);
+    if(it){
+      const was=it.condition;
+      it.condition='Good'; if(!(+it.qty)) it.qty=1;
+      it.notes=((it.notes||'').trim()+`${it.notes?'\n':''}Fixed ${new Date().toLocaleDateString()} (was ${was})`).trim();
+      r.updated=Date.now(); save(); toast(`${it.name} fixed`); refresh();
+    }
+    return;
+  }
+  if(t.closest('[data-hmadd]')){
+    const box=document.getElementById('hmIn-'+r.id);
+    const txt=((box||{}).value||'').replace(/\s+/g,' ').trim();
+    if(!txt){ toast('Type what needs fixing'); return; }
+    r.work.push({id:uid(),task:txt,priority:'Normal',status:'notdone',notes:'',assignee:'Handyman'});
+    r.updated=Date.now(); save(); toast(`Added to room ${r.number}`); refresh();
+    return;
+  }
   const wd=t.closest('[data-workdone]');
   if(wd){
     const w=r.work.find(x=>x.id===wd.dataset.workdone);
@@ -2810,7 +3083,9 @@ document.addEventListener('click', async e=>{
     const task=document.getElementById('wTask').value.replace(/\s+/g,' ').trim();
     if(!task) return toast('Describe what needs doing');
     const payload={task,priority:document.getElementById('wPri').value,
-      status:document.getElementById('wStat').value, notes:document.getElementById('wNotes').value.trim()};
+      status:document.getElementById('wStat').value, notes:document.getElementById('wNotes').value.trim(),
+      assignee:(document.getElementById('wWho')||{}).value||'Handyman'};
+    if(payload.status==='complete') payload.doneAt=Date.now();
     const existing=sw.dataset.savework?r.work.find(x=>x.id===sw.dataset.savework):null;
     if(existing) Object.assign(existing,payload);
     else r.work.push({id:uid(),...payload});
@@ -2964,6 +3239,10 @@ document.addEventListener('input',e=>{
 
   if(!state.stdSeeded && !standardIsSet()){ state.standard.all=[...DEFAULT_STANDARD]; state.stdSeeded=true; save(); }
   await snapshot('startup');
+  try{
+    const q=new URLSearchParams(location.search||'');
+    if((q.get('view')||'').toLowerCase()==='handyman'){ todoTab='handyman'; setTimeout(()=>showTodo(),0); }
+  }catch(e){}
   showBoard();
   syncNow(true);
   try{
