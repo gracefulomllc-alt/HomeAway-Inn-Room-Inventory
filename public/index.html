@@ -196,6 +196,11 @@ textarea{min-height:70px;resize:vertical}
 .todohead .rn{font-family:var(--mono);font-size:16px;font-weight:600;flex:none}
 .todohead .rt{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .todohead .cnt{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--needs);flex:none}
+.jobthumb{width:58px;height:58px;object-fit:cover;border-radius:8px;border:1px solid var(--line);
+  flex:none;cursor:pointer;background:#eceae4}
+.jpprev{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.jpprev img{width:84px;height:84px;object-fit:cover;border-radius:9px;border:1px solid var(--line)}
+#reportRoot img.jp{width:140px;max-width:100%;height:auto;margin-top:6px;border-radius:4px;border:1px solid #b9b6ad}
 .hmtop{position:relative}
 .hmbadge{display:inline-block;margin-left:6px;background:#bc4423;color:#fff;border-radius:999px;
   font-size:11px;font-weight:700;min-width:18px;padding:1px 6px;line-height:16px;text-align:center}
@@ -493,6 +498,26 @@ const STATUSES = [
 ];
 const CONDITIONS = ['Good','Fair','Poor','Damaged','Missing'];
 const ASSIGNEES = ['Handyman','Housekeeping','Front desk','Management'];
+/* The usual suspects in a hotel room, grouped the way a handyman thinks. */
+const HM_FIXES = {
+  'Bathroom':['Toilet running','Toilet clogged','Toilet seat loose','Leaky faucet','Slow drain','Shower head leaking',
+    'Low water pressure','No hot water','Exhaust fan loud or not working','Re-caulk tub or shower','Towel bar loose',
+    'Toilet paper holder loose','Soap holder loose','Mirror cracked','Grout cracked or missing'],
+  'Electrical':['Light bulb out','Outlet not working','Lamp broken','Light switch broken','TV won\'t turn on',
+    'TV remote not working','No cable or picture','Smoke detector chirping','Alarm clock broken'],
+  'Heating & cooling':['AC not cooling','AC noisy','AC leaking water','Heater not working','Thermostat not working','AC filter dirty'],
+  'Doors & windows':['Door lock or key card not working','Door won\'t latch','Deadbolt or security latch broken',
+    'Peephole missing or damaged','Door sticking','Window won\'t lock','Window screen torn','Blinds broken','Curtain rod down'],
+  'Walls & floors':['Paint touch-up','Hole in drywall','Water stain on ceiling','Carpet stain','Carpet torn or lifting',
+    'Baseboard loose','Tile cracked'],
+  'Furniture & appliances':['Bed frame broken','Headboard loose','Drawer stuck or broken','Chair wobbly or broken',
+    'Desk damaged','Nightstand damaged','Microwave not working','Fridge not cooling','Coffee maker not working','Luggage rack broken'],
+  'Other':['Pest sighting','Bad odor','Wi-Fi not working']
+};
+function fixOptions(placeholder){
+  return `<option value="">${esc(placeholder)}</option>`+Object.entries(HM_FIXES).map(([g,list])=>
+    `<optgroup label="${esc(g)}">${list.map(x=>`<option>${esc(x)}</option>`).join('')}</optgroup>`).join('');
+}
 const ROOM_TYPES = ['Superior Double','Superior Single','Economy Double','Economy Single','Storage room'];
 /* Not let to guests, so the guest-room baseline doesn't apply. Only its own
    list counts — leave that empty and it's simply never flagged. */
@@ -962,6 +987,7 @@ function normalizeRoom(r){
     if(!STATUSES.some(s=>s.k===w.status)) w.status='notdone';
     if(typeof w.priority!=='string') w.priority='Normal';
     if(!ASSIGNEES.includes(w.assignee)) w.assignee='Handyman';
+    if(w.photoId!==undefined && typeof w.photoId!=='string') delete w.photoId;
     if(typeof w.notes!=='string') w.notes='';
   });
   if(!Number.isFinite(r.updated)) r.updated=Date.now();
@@ -1018,6 +1044,35 @@ async function decodeSource(file){
     catch(e){}
   }
   return await fileToImage(file);
+}
+/* Turn one camera or library file into a stored-photo record without saving
+   it yet. Used for job photos, which are attached when the job is added. */
+async function makePhotoRecord(file,roomId){
+  if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+  let src=null;
+  try{
+    src=await decodeSource(file);
+    const full=await encode(src,1500,.72), thumb=await encode(src,340,.6);
+    if(!full||!thumb) return null;
+    return {id:uid(),roomId,full,thumb,ts:Date.now()};
+  }catch(e){ return null; }
+  finally{ if(src&&src.close) src.close(); }
+}
+function pickImage(camera,onFile){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='image/*';
+  if(camera) inp.setAttribute('capture','environment');
+  inp.onchange=()=>{ if(inp.files&&inp.files[0]) onFile(inp.files[0]); };
+  inp.click();
+}
+/* Fill in any job thumbnails on screen once the page is drawn. */
+function hydrateThumbs(){
+  if(!document.querySelectorAll) return;
+  document.querySelectorAll('img[data-thumbid]').forEach(async im=>{
+    if(im.getAttribute&&im.getAttribute('src')) return;
+    const u=await thumbURL(im.dataset.thumbid);
+    if(u) im.src=u; else if(im.style) im.style.display='none';
+  });
 }
 async function addPhotos(roomId,files){
   const r=room(roomId); if(!r) return;
@@ -1352,6 +1407,7 @@ function renderRoom(){
   const wl=document.getElementById('workList');
   if(wl) wl.innerHTML = r.work.length ? r.work.map(w=>`
     <div class="row">
+      ${w.photoId?`<img class="jobthumb" data-view="${esc(w.photoId)}" data-thumbid="${esc(w.photoId)}" alt="">`:''}
       <div class="main">
         <div class="name">${esc(w.task)}</div>
         ${w.notes?`<div class="note">${esc(w.notes)}</div>`:''}
@@ -1365,6 +1421,7 @@ function renderRoom(){
     : `<div class="empty">No jobs logged. Tap <strong>Common jobs</strong> or add your own.</div>`;
 
   renderSaveBar();
+  hydrateThumbs();
 
   /* photos */
   const pg=document.getElementById('photoGrid');
@@ -1507,8 +1564,11 @@ function sheetHmAdd(preRoom){
       ${list.map(r=>`<button class="rp ${r.id===pick?'on':''}" data-hmpick="${r.id}">${esc(r.number)}</button>`).join('')}
     </div>
     <label class="f" style="margin-top:12px"><span>What's wrong</span>
-      <textarea id="hmNewText" style="min-height:76px" placeholder="e.g. Bathroom fan is loud, TV won't turn on…"></textarea>
+      <select id="hmFix">${fixOptions('Pick a common fix, or type below…')}</select>
     </label>
+    <textarea id="hmNewText" style="min-height:70px;margin-bottom:10px" placeholder="Describe it in your own words, or add detail to the one you picked"></textarea>
+    <label class="f"><span>Photo (optional)</span></label>
+    <div id="hmPhotoBox">${jobPhotoBoxHTML()}</div>
     <div class="btnrow">
       <button class="btn primary" data-hmsave="1">Add job</button>
       <button class="btn" data-close>Done</button>
@@ -1518,6 +1578,18 @@ function sheetHmAdd(preRoom){
   sheetPickRoom=pick;
 }
 let sheetPickRoom='';
+let pendingJobPhoto=null, pendingJobPhotoURL='';
+function jobPhotoBoxHTML(){
+  return pendingJobPhoto
+    ? `<div class="jpprev"><img src="${pendingJobPhotoURL}" alt="Job photo">
+         <button class="btn sm" data-hmphotoclear="1">Remove photo</button></div>`
+    : `<div class="btnrow"><button class="btn sm" data-hmphoto="cam">📷 Take photo</button>
+         <button class="btn sm" data-hmphoto="lib">Choose photo</button></div>`;
+}
+function clearPendingJobPhoto(){
+  if(pendingJobPhotoURL) try{ URL.revokeObjectURL(pendingJobPhotoURL); }catch(e){}
+  pendingJobPhoto=null; pendingJobPhotoURL='';
+}
 function renderHandyman(){
   const groups=handymanRooms();
   const jobsN=groups.reduce((n,g)=>n+g.jobs.length,0);
@@ -1550,6 +1622,7 @@ function renderHandyman(){
         </button>
         <div class="body">
           ${jobs.map(w=>`<div class="hmjob st-${w.status}">
+            ${w.photoId?`<img class="jobthumb" data-troom="${r.id}" data-view="${esc(w.photoId)}" data-thumbid="${esc(w.photoId)}" alt="Photo of ${esc(w.task)}">`:''}
             <div class="hmtxt">
               <div class="hmtask">${esc(w.task)}${w.priority==='High'||w.priority==='Urgent'?` <span class="hmpri">${esc(w.priority)}</span>`:''}</div>
               ${w.notes?`<div class="hmnote">${esc(w.notes)}</div>`:''}
@@ -1558,7 +1631,8 @@ function renderHandyman(){
             <div class="hmbtns">
               ${w.status==='complete'
                 ? `<button class="btn sm" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="notdone">Reopen</button>`
-                : `<button class="btn sm hmdone" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="complete">✓ Done</button>
+                : `${w.photoId?'':`<button class="btn sm" data-troom="${r.id}" data-jobphoto="${w.id}">📷</button>`}
+                   <button class="btn sm hmdone" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="complete">✓ Done</button>
                    <button class="btn sm ${w.status==='progress'?'pick':''}" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="progress">Started</button>
                    <button class="btn sm ${w.status==='needs'?'pickbad':''}" data-troom="${r.id}" data-hmstatus="${w.id}" data-st="needs">Needs parts</button>`}
             </div>
@@ -1592,6 +1666,7 @@ function setTodoTitle(){
 }
 function renderTodo(){
   setTodoTitle();
+  setTimeout(hydrateThumbs,0);
   const groups=state.rooms.map(r=>({r,list:roomTodos(r)})).filter(g=>g.list.length);
   const total=groups.reduce((n,g)=>n+g.list.length,0);
   const tally={};
@@ -1783,7 +1858,7 @@ async function syncNow(quiet){
       }catch(e){}
       if(upPhotos%5===0&&upPhotos){ syncState.phase=`↑ ${upPhotos}`; renderSyncChip(); toast(`Sending photos… ${upPhotos}`); }
     }
-    const wanted=new Set(state.rooms.flatMap(r=>r.photos));
+    const wanted=new Set(state.rooms.flatMap(r=>[...r.photos,...r.work.map(w=>w.photoId).filter(Boolean)]));
     for(const id of wanted){
       if(localIds.has(id)||!there.has(id)) continue;
       const got=await api('photo',{id});
@@ -1913,7 +1988,7 @@ async function deleteRooms(ids){
   deleteIntent=Date.now();
   await snapshot('before delete');
   for(const r of list){
-    for(const pid of r.photos){
+    for(const pid of [...r.photos,...r.work.map(w=>w.photoId).filter(Boolean)]){
       await idbDel('photos',pid).catch(()=>{});
       if(thumbURLs.has(pid)){ URL.revokeObjectURL(thumbURLs.get(pid)); thumbURLs.delete(pid); }
     }
@@ -2056,6 +2131,7 @@ function sheetWork(workId){
   const w=workId?r.work.find(x=>x.id===workId):null;
   openSheet(`
     <h3>${w?'Edit job':'Add job'}</h3>
+    ${w?'':`<label class="f"><span>Common fixes</span><select id="wFix">${fixOptions('Pick one, or type below…')}</select></label>`}
     <label class="f"><span>What needs doing</span><input type="text" id="wTask" value="${esc(w?w.task:'')}" placeholder="e.g. Replace bathroom fan"></label>
     <div class="grid2">
       <label class="f"><span>Priority</span><select id="wPri">${['Low','Normal','High','Urgent'].map(p=>`<option ${w&&w.priority===p?'selected':(!w&&p==='Normal'?'selected':'')}>${p}</option>`).join('')}</select></label>
@@ -2270,6 +2346,14 @@ async function exportReport(scope,photoMode,newPage){
         if(++shot%30===0){ toast(`Loading photos… ${shot}`); await new Promise(x=>setTimeout(x,0)); }
       }
     }
+    const jp={};
+    if(limit){
+      for(const w of r.work){
+        if(!w.photoId) continue;
+        const p=await idbGet('photos',w.photoId);
+        if(p&&p.full&&p.full.size){ const u=URL.createObjectURL(p.full); reportURLs.push(u); jp[w.photoId]=u; }
+      }
+    }
     const open=r.work.filter(x=>x.status!=='complete');
     parts.push(`
       <section${newPage?' class="pagebreak"':''}>
@@ -2287,7 +2371,7 @@ async function exportReport(scope,photoMode,newPage){
         ${!r.inventory.length&&!r.work.length?`<p class="meta">No items or jobs recorded for this room yet.</p>`:''}
         ${r.work.length?`<h3>Work needed — ${r.work.length} jobs</h3><table>
           <thead><tr><th>Job</th><th>For</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead><tbody>
-          ${r.work.map(x=>`<tr><td>${esc(x.task)}</td><td>${esc(x.assignee||'Handyman')}</td><td>${esc(x.priority)}</td><td>${statusLabel(x.status)}${x.doneAt?'<br><span class="meta">'+new Date(x.doneAt).toLocaleDateString()+'</span>':''}</td><td>${esc(x.notes)}</td></tr>`).join('')}</tbody></table>`:''}
+          ${r.work.map(x=>`<tr><td>${esc(x.task)}${jp[x.photoId]?`<br><img class="jp" src="${jp[x.photoId]}" alt="">`:''}</td><td>${esc(x.assignee||'Handyman')}</td><td>${esc(x.priority)}</td><td>${statusLabel(x.status)}${x.doneAt?'<br><span class="meta">'+new Date(x.doneAt).toLocaleDateString()+'</span>':''}</td><td>${esc(x.notes)}</td></tr>`).join('')}</tbody></table>`:''}
       </section>`);
   }
 
@@ -2801,7 +2885,24 @@ document.addEventListener('click', async e=>{
   if(id==='hmBtn') return showHandyman();
   if(t.closest('[data-openhm]')) return showHandyman();
   if(id==='todoBtn'){ if(todoTab==='handyman') todoTab='room'; return showTodo(); }
-  if(t.closest('[data-hmnew]')) return sheetHmAdd();
+  if(t.closest('[data-hmnew]')){ clearPendingJobPhoto(); return sheetHmAdd(); }
+  const hph=t.closest('[data-hmphoto]');
+  if(hph){
+    pickImage(hph.dataset.hmphoto==='cam', async file=>{
+      toast('Preparing photo…');
+      const rec=await makePhotoRecord(file,sheetPickRoom||'');
+      if(!rec){ toast("Couldn't read that photo — try again"); return; }
+      clearPendingJobPhoto();
+      pendingJobPhoto=rec; pendingJobPhotoURL=URL.createObjectURL(rec.thumb);
+      const pb=document.getElementById('hmPhotoBox'); if(pb) pb.innerHTML=jobPhotoBoxHTML();
+    });
+    return;
+  }
+  if(t.closest('[data-hmphotoclear]')){
+    clearPendingJobPhoto();
+    const pb=document.getElementById('hmPhotoBox'); if(pb) pb.innerHTML=jobPhotoBoxHTML();
+    return;
+  }
   const hp=t.closest('[data-hmpick]');
   if(hp){
     sheetPickRoom=hp.dataset.hmpick;
@@ -2815,10 +2916,19 @@ document.addEventListener('click', async e=>{
     const txt=((box||{}).value||'').replace(/\s+/g,' ').trim();
     if(!rr){ toast('Tap a room number first'); return; }
     if(!txt){ toast("Type what's wrong"); return; }
-    rr.work.push({id:uid(),task:txt,priority:'Normal',status:'notdone',notes:'',assignee:'Handyman'});
+    const job={id:uid(),task:txt,priority:'Normal',status:'notdone',notes:'',assignee:'Handyman'};
+    if(pendingJobPhoto){
+      pendingJobPhoto.roomId=rr.id;
+      try{ await idbPut('photos',pendingJobPhoto); job.photoId=pendingJobPhoto.id; }
+      catch(e){ toast('Photo could not be saved — job added without it'); }
+    }
+    rr.work.push(job);
     rr.updated=Date.now(); save();
     hmLastRoom=rr.id;
     if(box) box.value='';
+    const fx=document.getElementById('hmFix'); if(fx) fx.value='';
+    clearPendingJobPhoto();
+    const pb=document.getElementById('hmPhotoBox'); if(pb) pb.innerHTML=jobPhotoBoxHTML();
     const note=document.getElementById('hmAddedNote');
     if(note) note.innerHTML=`✓ Added to room ${esc(rr.number)}. Add another, or tap Done.`;
     toast(`Added to room ${rr.number}`);
@@ -3094,6 +3204,19 @@ document.addEventListener('click', async e=>{
     save(); closeSheet(); refresh();
     return;
   }
+  const jph=t.closest('[data-jobphoto]');
+  if(jph){
+    const roomRef=r, w=r.work.find(x=>x.id===jph.dataset.jobphoto);
+    if(!w) return;
+    pickImage(true, async file=>{
+      toast('Saving photo…');
+      const rec=await makePhotoRecord(file,roomRef.id);
+      if(!rec){ toast("Couldn't read that photo"); return; }
+      try{ await idbPut('photos',rec); }catch(e){ toast('Photo could not be saved'); return; }
+      w.photoId=rec.id; roomRef.updated=Date.now(); save(); toast('Photo added'); refresh();
+    });
+    return;
+  }
   const hs=t.closest('[data-hmstatus]');
   if(hs){
     const w=r.work.find(x=>x.id===hs.dataset.hmstatus);
@@ -3222,6 +3345,13 @@ document.addEventListener('contextmenu',e=>{
   sheetRoomActions(t.dataset.room);
 });
 
+document.addEventListener('change',e=>{
+  const id=e.target&&e.target.id;
+  if(id!=='hmFix'&&id!=='wFix') return;
+  const v=e.target.value; if(!v) return;
+  const box=document.getElementById(id==='hmFix'?'hmNewText':'wTask');
+  if(box){ box.value=v; if(box.focus) try{ box.focus(); }catch(err){} }
+});
 document.getElementById('scrim').addEventListener('click',closeSheet);
 document.getElementById('lightbox').addEventListener('click',e=>{
   if(e.target.closest('#lbClose')) return;
