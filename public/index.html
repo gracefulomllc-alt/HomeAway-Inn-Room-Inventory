@@ -196,6 +196,22 @@ textarea{min-height:70px;resize:vertical}
 .todohead .rn{font-family:var(--mono);font-size:16px;font-weight:600;flex:none}
 .todohead .rt{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .todohead .cnt{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--needs);flex:none}
+.hmtop{position:relative}
+.hmbadge{display:inline-block;margin-left:6px;background:#bc4423;color:#fff;border-radius:999px;
+  font-size:11px;font-weight:700;min-width:18px;padding:1px 6px;line-height:16px;text-align:center}
+.hmbanner{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;
+  background:#1d2b35;color:#fff;border:0;border-radius:11px;padding:13px 14px;margin-bottom:12px;min-height:58px}
+.hmbanner:active{background:#111a21}
+.hmbanner .hbi{font-size:22px;flex:none}
+.hmbanner .hbt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.hmbanner .hbt strong{font-size:15px}
+.hmbanner .hbt span{font-size:12.5px;opacity:.8}
+.hmbanner .hbgo{font-size:13px;font-weight:700;flex:none;opacity:.9}
+.hmaddbig{margin-top:14px;min-height:52px;font-size:16px}
+.roompick{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:7px;max-height:220px;overflow-y:auto;padding:2px}
+.rp{border:1px solid var(--line-2);background:#fff;border-radius:9px;padding:12px 4px;
+  font-family:var(--mono);font-size:15px;font-weight:700;cursor:pointer;min-height:48px}
+.rp.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .hmhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .hmbig{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1}
 .seg{display:flex;border:1px solid var(--line-2);border-radius:9px;overflow:hidden}
@@ -408,6 +424,7 @@ body.printing .wrap,body.printing .topbar,body.printing .fab{display:none!import
   <button class="iconbtn" id="backBtn" style="display:none">‹ Rooms</button>
   <h1 id="title">Room Survey<span class="sub" id="subtitle">Home Away Inn</span></h1>
   <button class="iconbtn" id="syncBtn">Sync</button>
+  <button class="iconbtn hmtop" id="hmBtn">Handyman<span class="hmbadge" id="hmBadge"></span></button>
   <button class="iconbtn" id="todoBtn">To-do</button>
   <button class="iconbtn" id="menuBtn">Menu</button>
 </div>
@@ -421,6 +438,7 @@ body.printing .wrap,body.printing .topbar,body.printing .fab{display:none!import
       You haven't backed up in a while. Menu → <strong>Save backup file</strong> keeps a copy off this phone.
     </div>
 
+    <button class="hmbanner hidden" id="hmBanner" data-openhm="1"></button>
     <div class="strip" id="strip"></div>
 
     <div class="searchrow">
@@ -1096,7 +1114,32 @@ function renderTypeFilter(){
   el.value=typeFilter;
   if(el.value!==typeFilter){ typeFilter='all'; el.value='all'; }
 }
+function hmOpenCount(){
+  let jobs=0, rooms=0;
+  state.rooms.forEach(r=>{
+    const n=r.work.filter(w=>w.assignee==='Handyman'&&w.status!=='complete').length
+          + r.inventory.filter(i=>i.condition==='Poor'||i.condition==='Damaged').length;
+    if(n){ jobs+=n; rooms++; }
+  });
+  return {jobs,rooms};
+}
+function renderHmEntry(){
+  const {jobs,rooms}=hmOpenCount();
+  const badge=document.getElementById('hmBadge');
+  if(badge){ badge.textContent=jobs?String(jobs):''; badge.style.display=jobs?'':'none'; }
+  const ban=document.getElementById('hmBanner');
+  if(ban){
+    ban.innerHTML=`<span class="hbi">🔧</span>
+      <span class="hbt"><strong>Handyman list</strong><span>${jobs
+        ? `${jobs} open job${jobs===1?'':'s'} in ${rooms} room${rooms===1?'':'s'}`
+        : 'Nothing open — tap to add a job'}</span></span>
+      <span class="hbgo">Open ›</span>`;
+    ban.classList.remove('hidden');
+  }
+}
+function showHandyman(){ todoTab='handyman'; showTodo(); }
 function renderBoard(){
+  renderHmEntry();
   renderStrip();
   renderTypeFilter();
   const list=visibleRooms();
@@ -1451,6 +1494,30 @@ function handymanRooms(){
     return {r,jobs,broken};
   }).filter(g=>g.jobs.length||g.broken.length);
 }
+let hmLastRoom=null;
+/* Add a job without opening any room: tap the room number, say what's
+   wrong, done. Stays open so several can be added in a row. */
+function sheetHmAdd(preRoom){
+  const pick=preRoom||hmLastRoom||'';
+  const list=state.rooms.filter(r=>!String(r.number).startsWith('Unknown'));
+  openSheet(`
+    <h3>Add a job for the handyman</h3>
+    <label class="f"><span>Which room</span></label>
+    <div class="roompick" id="hmPick">
+      ${list.map(r=>`<button class="rp ${r.id===pick?'on':''}" data-hmpick="${r.id}">${esc(r.number)}</button>`).join('')}
+    </div>
+    <label class="f" style="margin-top:12px"><span>What's wrong</span>
+      <textarea id="hmNewText" style="min-height:76px" placeholder="e.g. Bathroom fan is loud, TV won't turn on…"></textarea>
+    </label>
+    <div class="btnrow">
+      <button class="btn primary" data-hmsave="1">Add job</button>
+      <button class="btn" data-close>Done</button>
+    </div>
+    <p class="hint" id="hmAddedNote" style="margin-top:10px"></p>
+  `);
+  sheetPickRoom=pick;
+}
+let sheetPickRoom='';
 function renderHandyman(){
   const groups=handymanRooms();
   const jobsN=groups.reduce((n,g)=>n+g.jobs.length,0);
@@ -1470,11 +1537,7 @@ function renderHandyman(){
             <button class="${hmFilter==='done'?'on':''}" data-hmfilter="done">Done</button>
           </div>
         </div>
-        ${hmFilter==='open'?`<div class="hmadd">
-          <select id="hmAddRoom">${state.rooms.map(r=>`<option value="${r.id}">Room ${esc(r.number)}</option>`).join('')}</select>
-          <input type="text" id="hmAddText" placeholder="Add a job for the handyman…" autocomplete="off">
-          <button class="btn primary sm" data-hmaddany="1">Add</button>
-        </div>`:''}
+        ${hmFilter==='open'?`<button class="btn primary full hmaddbig" data-hmnew="1">+ Add a job</button>`:''}
       </div>
     </div>
     ${groups.length?groups.map(({r,jobs,broken})=>`
@@ -1520,7 +1583,15 @@ function renderHandyman(){
         ? 'Nothing on the list. Add a job above, or mark an item Poor or Damaged in any room and it shows up here.'
         : 'Nothing finished yet.'}</div></div>`}`;
 }
+function setTodoTitle(){
+  const el=document.getElementById('title');
+  if(!el) return;
+  el.innerHTML = todoTab==='handyman'
+    ? `Handyman<span class="sub">Room by room</span>`
+    : `To-do<span class="sub">All rooms</span>`;
+}
 function renderTodo(){
+  setTodoTitle();
   const groups=state.rooms.map(r=>({r,list:roomTodos(r)})).filter(g=>g.list.length);
   const total=groups.reduce((n,g)=>n+g.list.length,0);
   const tally={};
@@ -1593,7 +1664,7 @@ function showTodo(){
   document.getElementById('backBtn').style.display='';
   document.getElementById('todoBtn').style.display='none';
   document.getElementById('fab').style.display='none';
-  document.getElementById('title').innerHTML=`To-do<span class="sub">All rooms</span>`;
+  document.getElementById('hmBtn').style.display='none';
   renderTodo();
   window.scrollTo(0,0);
 }
@@ -1769,6 +1840,7 @@ function showBoard(){
   document.getElementById('saveBar').style.display='none';
   document.getElementById('todoView').classList.add('hidden');
   document.getElementById('todoBtn').style.display='';
+  document.getElementById('hmBtn').style.display='';
   document.getElementById('boardView').classList.remove('hidden');
   document.getElementById('roomView').classList.add('hidden');
   document.getElementById('backBtn').style.display='none';
@@ -1782,6 +1854,7 @@ function showRoom(id){
   currentRoomId=id;
   document.getElementById('todoView').classList.add('hidden');
   document.getElementById('todoBtn').style.display='none';
+  document.getElementById('hmBtn').style.display='none';
   document.body.classList.add('inroom');
   document.getElementById('saveBar').style.display='flex';
   document.getElementById('boardView').classList.add('hidden');
@@ -2725,19 +2798,35 @@ document.addEventListener('click', async e=>{
     closeSheet(); renderBoard(); return;
   }
   if(id==='syncBtn') return syncNow(false);
-  if(id==='todoBtn') return showTodo();
-  const hf=t.closest('[data-hmfilter]');
-  if(hf){ hmFilter=hf.dataset.hmfilter; renderTodo(); return; }
-  if(t.closest('[data-hmaddany]')){
-    const rid=(document.getElementById('hmAddRoom')||{}).value;
-    const txt=((document.getElementById('hmAddText')||{}).value||'').replace(/\s+/g,' ').trim();
-    const rr=room(rid);
-    if(!rr){ toast('Pick a room'); return; }
-    if(!txt){ toast('Type what needs fixing'); return; }
-    rr.work.push({id:uid(),task:txt,priority:'Normal',status:'notdone',notes:'',assignee:'Handyman'});
-    rr.updated=Date.now(); save(); toast(`Added to room ${rr.number}`); renderTodo();
+  if(id==='hmBtn') return showHandyman();
+  if(t.closest('[data-openhm]')) return showHandyman();
+  if(id==='todoBtn'){ if(todoTab==='handyman') todoTab='room'; return showTodo(); }
+  if(t.closest('[data-hmnew]')) return sheetHmAdd();
+  const hp=t.closest('[data-hmpick]');
+  if(hp){
+    sheetPickRoom=hp.dataset.hmpick;
+    const wrap=document.getElementById('hmPick');
+    if(wrap&&wrap.querySelectorAll) wrap.querySelectorAll('.rp').forEach(b=>b.classList.toggle('on',b.dataset.hmpick===sheetPickRoom));
     return;
   }
+  if(t.closest('[data-hmsave]')){
+    const rr=room(sheetPickRoom);
+    const box=document.getElementById('hmNewText');
+    const txt=((box||{}).value||'').replace(/\s+/g,' ').trim();
+    if(!rr){ toast('Tap a room number first'); return; }
+    if(!txt){ toast("Type what's wrong"); return; }
+    rr.work.push({id:uid(),task:txt,priority:'Normal',status:'notdone',notes:'',assignee:'Handyman'});
+    rr.updated=Date.now(); save();
+    hmLastRoom=rr.id;
+    if(box) box.value='';
+    const note=document.getElementById('hmAddedNote');
+    if(note) note.innerHTML=`✓ Added to room ${esc(rr.number)}. Add another, or tap Done.`;
+    toast(`Added to room ${rr.number}`);
+    if(inTodo()) renderTodo(); else renderBoard();
+    return;
+  }
+  const hf=t.closest('[data-hmfilter]');
+  if(hf){ hmFilter=hf.dataset.hmfilter; renderTodo(); return; }
   const tt=t.closest('[data-todotab]');
   if(tt){ todoTab=tt.dataset.todotab; renderTodo(); window.scrollTo(0,0); return; }
   if(id==='fab') return sheetAddRooms();
