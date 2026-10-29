@@ -1173,9 +1173,10 @@ async function removePhoto(roomId,photoId){
   const r=room(roomId); if(!r) return;
   r.photos=r.photos.filter(p=>p!==photoId);
   delete notesOf(r)[photoId];
+  r.updated=Date.now(); flushSave();             // record the removal right away
   await idbDel('photos',photoId);
   if(thumbURLs.has(photoId)){URL.revokeObjectURL(thumbURLs.get(photoId));thumbURLs.delete(photoId)}
-  r.updated=Date.now(); save(); renderRoom();
+  renderRoom();
 }
 
 /* ---------------- board ---------------- */
@@ -1892,6 +1893,36 @@ function adopt(theirs,mine){
   return r;
 }
 
+/* Sync updates a room object in place rather than swapping in a new one.
+   Anything holding the room across a wait — a photo being processed when the
+   app wakes from the camera, a job being added — keeps writing to the live
+   copy instead of one that has just been discarded. */
+/* A photo that is stored on this phone, belongs to a room that still exists,
+   but is linked nowhere was lost by a bug — put it back in its room.
+   Deliberately deleted or replaced photos are removed from storage, so they
+   are never resurrected by this. */
+async function relinkOrphanPhotos(){
+  let fixed=0;
+  try{
+    const all=await idbAll('photos');
+    const linked=new Set(state.rooms.flatMap(r=>[...r.photos,...r.work.map(w=>w.photoId).filter(Boolean)]));
+    all.filter(p=>p&&p.id&&!linked.has(p.id)&&p.full&&p.full.size)
+       .sort((a,b)=>(a.ts||0)-(b.ts||0))
+       .forEach(p=>{
+         const r=state.rooms.find(x=>x.id===p.roomId);
+         if(!r||r.photos.length>=MAX_PHOTOS) return;
+         r.photos.push(p.id); r.updated=Date.now(); fixed++;
+       });
+    if(fixed){ save(); toast(`Recovered ${fixed} photo${fixed===1?'':'s'}`); }
+  }catch(e){}
+  return fixed;
+}
+function replaceInPlace(target,next){
+  if(target===next) return target;
+  Object.keys(target).forEach(k=>{ if(!(k in next)) delete target[k]; });
+  Object.assign(target,next);
+  return target;
+}
 async function pushRoom(r){
   for(let attempt=0;attempt<4;attempt++){
     const send=JSON.parse(JSON.stringify(r));
@@ -1904,10 +1935,7 @@ async function pushRoom(r){
       return false;
     }
     if(status===409 && data.room){
-      const merged=threeWay(r,normalizeRoom(data.room));
-      const i=state.rooms.findIndex(x=>x.id===r.id);
-      if(i>=0) state.rooms[i]=merged;
-      r=merged;
+      replaceInPlace(r,threeWay(r,normalizeRoom(data.room)));
       continue;
     }
     return false;
@@ -1959,18 +1987,18 @@ async function syncNow(quiet){
           const drop = twin.id<id ? adopt(theirs) : twin;
           const {room:combined}=mergeRooms(keep,drop);
           combined.rev=keep.rev||0; combined.syncBase=keep.syncBase;
-          state.rooms=state.rooms.filter(x=>x.id!==twin.id);
-          state.rooms.push(combined);
+          if(keep===twin) replaceInPlace(twin,combined);
+          else { state.rooms=state.rooms.filter(x=>x.id!==twin.id); state.rooms.push(combined); }
           markDeleted(drop.id);
           try{ await api('room',{id:drop.id,method:'DELETE'}); }catch(e){}
           gone.add(drop.id);
         } else state.rooms.push(adopt(theirs));
         pulled++;
       } else if(!isDirty(mine)){
-        state.rooms[state.rooms.indexOf(mine)]=adopt(theirs,mine);   // nothing local — take theirs
+        replaceInPlace(mine,adopt(theirs,mine));     // nothing local — take theirs
         pulled++;
       } else {
-        state.rooms[state.rooms.indexOf(mine)]=threeWay(mine,theirs);  // both changed — merge, then push
+        replaceInPlace(mine,threeWay(mine,theirs));  // both changed — merge, then push
         pulled++;
       }
     }
@@ -3607,6 +3635,7 @@ document.addEventListener('input',e=>{
     if((q.get('view')||'').toLowerCase()==='handyman'){ todoTab='handyman'; setTimeout(()=>showTodo(),0); }
   }catch(e){}
   showBoard();
+  await relinkOrphanPhotos();
   syncNow(true);
   startAutoSync();
   try{
