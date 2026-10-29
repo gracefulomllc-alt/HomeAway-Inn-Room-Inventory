@@ -27,5 +27,25 @@ const HTML=fs.readFileSync(__dirname+'/../public/index.html','utf8');
   T.ok(/MAX_PHOTOS = 40/.test(HTML),'up to 40 photos per room');
   await A.ev('flushSave()'); await A.ev('syncNow(true)'); await settle(300);
   T.ok(server.rooms[rid].photos.length===12,'all of them reach the other phones');
+
+  T.section('iPhone drops storage while the camera is open');
+  const B=launch(makeDisk(),{server:makeServer()}); await settle(400);
+  B.ev("state.rooms=[]; addRooms('120','')");
+  const bid=B.state.rooms[0].id;
+  B.ev("decodeSource=async()=>({width:100,height:100,close(){}})");
+  B.ev("encode=async()=>({size:9})");
+  for(let k=0;k<5;k++){
+    B.sb.__conns.forEach(c=>c.closed=true);          // camera opened → connection lost
+    await B.ev(`addPhotos('${bid}',[{type:'image/jpeg'}])`);
+    await settle(30);
+  }
+  T.ok(B.state.rooms[0].photos.length===5,'five photos in a row, each after the connection was dropped');
+  B.sb.__conns.forEach(c=>c.closed=true);
+  const dB=B.disk||null;
+  B.ev(`room('${bid}').notes='after camera'; room('${bid}').updated=Date.now(); save()`);
+  await B.ev('flushSave()'); await settle(200);
+  const saved=await B.ev('idbGet("kv","state")');
+  T.ok(saved&&saved.rooms[0].notes==='after camera','room notes still save after the connection was dropped');
+  T.ok(/function idbReq/.test(HTML),'every storage call retries on a lost connection');
   T.done();
 })();

@@ -555,16 +555,42 @@ function openDB(){
       if(!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
       if(!d.objectStoreNames.contains('photos')) d.createObjectStore('photos',{keyPath:'id'});
     };
-    r.onsuccess = e=>{clearTimeout(bail);db=e.target.result;res()};
+    r.onsuccess = e=>{clearTimeout(bail);db=e.target.result;
+      db.onclose=()=>{ db=null; };                       // iPhone drops it while the camera is open
+      db.onversionchange=()=>{ try{db.close()}catch(_){} db=null; };
+      res()};
     r.onerror = ()=>{clearTimeout(bail);rej(r.error)};
   });
 }
 function tx(store,mode){return db.transaction(store,mode).objectStore(store)}
-function idbGet(store,key){return new Promise((res,rej)=>{const q=tx(store,'readonly').get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
-function idbPut(store,val,key){return new Promise((res,rej)=>{const q=key!==undefined?tx(store,'readwrite').put(val,key):tx(store,'readwrite').put(val);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)})}
-function idbDel(store,key){return new Promise((res,rej)=>{const q=tx(store,'readwrite').delete(key);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)})}
-function idbKeys(store){return new Promise((res,rej)=>{const q=tx(store,'readonly').getAllKeys();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error)})}
-function idbAll(store){return new Promise((res,rej)=>{const q=tx(store,'readonly').getAll();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error)})}
+/* iPhone Safari closes the storage connection when the page goes to the
+   background — which is exactly what opening the camera does. Every storage
+   call after that failed until the app was reloaded: one photo, then nothing.
+   Now a lost connection is reopened and the call tried again. */
+function idbReq(make){
+  const once=()=>new Promise((res,rej)=>{
+    let q; try{ q=make(); }catch(e){ return rej(e); }
+    q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);
+    if(q.transaction) q.transaction.onabort=()=>rej(q.transaction.error||new Error('aborted'));
+  });
+  return (async()=>{
+    for(let i=0;i<3;i++){
+      try{ if(!db) await openDB(); return await once(); }
+      catch(e){
+        const lost=!db || /InvalidState|UnknownError|closing|closed|lost|Connection/i.test(String(e&&(e.name+' '+e.message)));
+        if(!lost||i===2) throw e;
+        try{ db&&db.close(); }catch(_){}
+        db=null;
+        await new Promise(r=>setTimeout(r,150*(i+1)));
+      }
+    }
+  })();
+}
+function idbGet(store,key){return idbReq(()=>tx(store,'readonly').get(key))}
+function idbPut(store,val,key){return idbReq(()=>key!==undefined?tx(store,'readwrite').put(val,key):tx(store,'readwrite').put(val)).then(()=>{})}
+function idbDel(store,key){return idbReq(()=>tx(store,'readwrite').delete(key)).then(()=>{})}
+function idbKeys(store){return idbReq(()=>tx(store,'readonly').getAllKeys()).then(r=>r||[])}
+function idbAll(store){return idbReq(()=>tx(store,'readonly').getAll()).then(r=>r||[])}
 
 /* ---------------- state ---------------- */
 let state = {v:1, rev:0, property:'Home Away Inn', rooms:[], standard:{all:[],byType:{}}, stdSeeded:false, deleted:{}, lastBackup:0};
@@ -1038,15 +1064,18 @@ function encode(src,max,quality){
     const sctx=step.getContext('2d');
     sctx.imageSmoothingQuality='high';
     sctx.drawImage(cur,0,0,nw,nh);
+    if(cur!==src&&cur.width!==undefined){ cur.width=0; cur.height=0; }
     cur=step; cw=nw; ch=nh;
   }
   canvas.width=tw; canvas.height=th;
   const ctx=canvas.getContext('2d');
   ctx.imageSmoothingQuality='high';
   ctx.drawImage(cur,0,0,tw,th);
+  if(cur!==src&&cur.width!==undefined){ cur.width=0; cur.height=0; }   // free the step canvas
   return new Promise(res=>{
-    try{ canvas.toBlob(b=>res(b&&b.size>0?b:null),'image/jpeg',quality); }
-    catch(e){ res(null); }
+    const done=b=>{ canvas.width=0; canvas.height=0; res(b&&b.size>0?b:null); };
+    try{ canvas.toBlob(done,'image/jpeg',quality); }
+    catch(e){ done(null); }
   });
 }
 /* Prefer createImageBitmap: it decodes off the canvas path, which avoids the
@@ -1105,7 +1134,8 @@ function hydrateThumbs(){
 async function addPhotos(roomId,files){
   const r=room(roomId); if(!r) return;
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
-  let added=0, skipped=0, quota=false, decodeFail=0;
+  let added=0, skipped=0, quota=false, decodeFail=0, why='';
+  toast(files.length>1?`Adding ${files.length} photos…`:'Adding photo…');
   for(const f of files){
     if(r.photos.length>=MAX_PHOTOS){skipped++;continue}
     if(f.type && !/^image\//.test(f.type)){skipped++;continue}
@@ -1120,7 +1150,7 @@ async function addPhotos(roomId,files){
       r.photos.push(id); added++;
     }catch(e){
       if(e&&(e.name==='QuotaExceededError'||/quota/i.test(e.message||''))) quota=true;
-      else decodeFail++;
+      else { decodeFail++; why=String(e&&(e.name||e.message)||'error').slice(0,40); }
       skipped++;
     }finally{
       if(src&&src.close) src.close();
@@ -1129,7 +1159,7 @@ async function addPhotos(roomId,files){
   r.updated=Date.now(); save(); renderRoom();
   if(quota) toast('Storage is full — save a backup, then remove some photos');
   else if(added) toast(`${added} photo${added>1?'s':''} added${skipped?` · ${skipped} skipped`:''} — tap Take photo for another`);
-  else if(decodeFail) toast("Couldn't read that photo — try shooting it again");
+  else if(decodeFail) toast(`Couldn't save that photo${why?` (${why})`:''} — try again`);
   else toast(`Limit is ${MAX_PHOTOS} photos per room`);
 }
 async function thumbURL(id){

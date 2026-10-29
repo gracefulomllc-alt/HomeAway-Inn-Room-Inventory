@@ -36,7 +36,9 @@ function launch(disk,opts={}){
       delete(k){const r={};setTimeout(()=>{delete disk[st][k];r.onsuccess&&r.onsuccess()},0);return r},
       getAll(){const r={};setTimeout(()=>{r.result=Object.values(disk[st]);r.onsuccess&&r.onsuccess()},0);return r},
       getAllKeys(){const r={};setTimeout(()=>{r.result=Object.keys(disk[st]);r.onsuccess&&r.onsuccess()},0);return r}});
-      q.onsuccess&&q.onsuccess({target:{result:{transaction:st=>({objectStore:()=>sf(st)})}}});},0);return q}}
+      const conn={closed:false,close(){this.closed=true},transaction(st){ if(this.closed){const e=new Error('The database connection is closing.');e.name='InvalidStateError';throw e;} return {objectStore:()=>sf(st)}; }};
+      (sb.__conns=sb.__conns||[]).push(conn);
+      q.onsuccess&&q.onsuccess({target:{result:conn}});},0);return q}}
   };
   sb.globalThis=sb; vm.createContext(sb);
   vm.runInContext(appJS()+'\n;globalThis.__ctx=(code)=>eval(code);',sb);
