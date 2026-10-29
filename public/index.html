@@ -662,7 +662,7 @@ async function autoSaveNow(){
                    && b.photos.length===r.photos.length; })());
     if(!good && r){ r.savedAt=0; }
     renderSaveBar();
-    if(good && Date.now()-lastAutoSync>15000){
+    if(good && Date.now()-lastAutoSync>4000){
       lastAutoSync=Date.now();
       syncNow(true);
     }
@@ -1492,7 +1492,7 @@ function renderRoom(){
     const urls=[];
     for(const pid of r.photos) urls.push([pid,await thumbURL(pid)]);
     if(token!==renderToken) return;          // a newer render started — drop this one
-    pg.innerHTML=urls.map(([pid,u])=>u
+    pg.innerHTML=urls.filter(([pid,u])=>u).map(([pid,u])=>u
       ? `<div class="phwrap"><button class="ph" data-editphoto="${pid}" aria-label="Edit photo">
            <img src="${u}" alt="Photo of room ${esc(r.number)}"><span class="phedit">Edit</span></button>
            ${notesOf(r)[pid]?`<div class="phnote">${esc(notesOf(r)[pid])}</div>`:''}</div>`
@@ -1824,22 +1824,87 @@ async function api(action,opts={}){
   return {status:res.status,data};
 }
 
+/* ---------- three-way room sync ----------
+   Each room remembers what it looked like at its last sync (syncBase). A room
+   with no local changes simply takes the newer server copy — edits, removals,
+   renames and all. Only when both sides changed is it merged, field by field
+   and item by item against that common starting point. */
+const ROOM_FIELDS=['number','type','floor','status','notes','upgradeTo','upgradeNote'];
+function roomContent(r){
+  const o={};
+  ROOM_FIELDS.forEach(k=>o[k]=r[k]==null?'':r[k]);
+  o.inventory=r.inventory||[]; o.work=r.work||[]; o.photos=r.photos||[]; o.photoNotes=r.photoNotes||{};
+  return JSON.stringify(o);
+}
+const isDirty=r=>!r.syncBase || r.syncBase!==roomContent(r);
+function markSynced(r){ r.syncBase=roomContent(r); }
+
+function mergeList(mine,theirs,base,keyOf){
+  const M=new Map(mine.map(x=>[keyOf(x),x])), Th=new Map(theirs.map(x=>[keyOf(x),x]));
+  const B=base?new Map(base.map(x=>[keyOf(x),x])):null;
+  const out=[], seen=new Set(), J=x=>JSON.stringify(x);
+  const take=k=>{
+    if(seen.has(k)) return; seen.add(k);
+    const m=M.get(k), t=Th.get(k), b=B?B.get(k):undefined;
+    if(B && b!==undefined){                       // existed at last sync
+      if(!m||!t) return;                          // removed on one side → removed
+      out.push(J(m)!==J(b)?m:t);                  // keep whichever side changed it
+    } else if(B){                                 // new since last sync, on either side
+      out.push(m||t);
+    } else {                                      // no history: server wins, keep our additions
+      if(t) out.push(t); else if(m) out.push(m);
+    }
+  };
+  theirs.forEach(x=>take(keyOf(x)));
+  mine.forEach(x=>take(keyOf(x)));
+  return out;
+}
+function threeWay(mine,theirs){
+  const base=mine.syncBase?JSON.parse(mine.syncBase):null;
+  const out=JSON.parse(JSON.stringify(theirs));
+  ROOM_FIELDS.forEach(k=>{
+    const m=mine[k]==null?'':mine[k];
+    if(base && m!==base[k]) out[k]=m;            // we changed it since last sync
+  });
+  out.inventory=mergeList(mine.inventory||[],theirs.inventory||[],base&&base.inventory,x=>x.id);
+  const names=new Set();                         // same item added on two phones → once
+  out.inventory=out.inventory.filter(i=>{ const k=nkey(i.name); if(names.has(k)) return false; names.add(k); return true; });
+  out.work=mergeList(mine.work||[],theirs.work||[],base&&base.work,x=>x.id);
+  out.photos=mergeList(mine.photos||[],theirs.photos||[],base&&base.photos,x=>x).filter(x=>typeof x==='string');
+  const pn={...(theirs.photoNotes||{})};
+  const mn=mine.photoNotes||{}, bn=base?base.photoNotes||{}:null;
+  new Set([...Object.keys(mn),...Object.keys(bn||{})]).forEach(k=>{
+    if(bn && (mn[k]||'')!==(bn[k]||'')){ if(mn[k]) pn[k]=mn[k]; else delete pn[k]; }
+    else if(!bn && mn[k] && !pn[k]) pn[k]=mn[k];
+  });
+  out.photoNotes=pn;
+  Object.keys(out.photoNotes).forEach(k=>{ if(!out.photos.includes(k)) delete out.photoNotes[k]; });
+  out.rev=theirs.rev||0;
+  out.updated=Math.max(mine.updated||0,theirs.updated||0);
+  out.savedAt=mine.savedAt||0;
+  out.syncBase=mine.syncBase;                    // still relative to the old base until pushed
+  return normalizeRoom(out);
+}
+function adopt(theirs,mine){
+  const r=normalizeRoom(JSON.parse(JSON.stringify(theirs)));
+  r.savedAt=mine?mine.savedAt||0:0;
+  markSynced(r);
+  return r;
+}
+
 async function pushRoom(r){
-  let attempt=0;
-  while(attempt++<3){
+  for(let attempt=0;attempt<4;attempt++){
     const send=JSON.parse(JSON.stringify(r));
-    delete send.savedAt;
+    delete send.savedAt; delete send.syncBase;
     const {status,data}=await api('room',{body:{room:send,baseRev:r.rev||0}});
-    if(status===200){ r.rev=data.rev; return true; }
+    if(status===200){ r.rev=data.rev; markSynced(r); return true; }
     if(status===410 || (data && data.deleted)){
       markDeleted(r.id);
       state.rooms=state.rooms.filter(x=>x.id!==r.id);
       return false;
     }
     if(status===409 && data.room){
-      const {room:merged}=mergeRooms(r,normalizeRoom(data.room));   // union, nothing lost
-      merged.rev=data.room.rev;
-      merged.updated=Math.max(merged.updated||0,(data.room.updated||0)+1);
+      const merged=threeWay(r,normalizeRoom(data.room));
       const i=state.rooms.findIndex(x=>x.id===r.id);
       if(i>=0) state.rooms[i]=merged;
       r=merged;
@@ -1877,34 +1942,44 @@ async function syncNow(quiet){
       pulled+=before-state.rooms.length;
     }
 
-    /* pull rooms that are new or newer than ours */
+    /* pull: anything the server has a newer revision of */
     for(const [id,info] of Object.entries(data.rooms||{})){
+      if(gone.has(id)) continue;
       const mine=state.rooms.find(x=>x.id===id);
-      if(mine && (mine.rev||0)>=(info.rev||0) && (mine.updated||0)>=(info.updated||0)) continue;
+      if(mine && (mine.rev||0)>=(info.rev||0)) continue;
       const got=await api('room',{id});
       if(got.status!==200||!got.data.room) continue;
       const theirs=normalizeRoom(got.data.room);
-      if(gone.has(id)) continue;
-      if(!mine){ state.rooms.push(theirs); pulled++; }
-      else{
-        const {room:merged}=mergeRooms(mine,theirs);
-        merged.rev=theirs.rev||0;
-        if(merged.inventory.length!==theirs.inventory.length
-          || merged.work.length!==theirs.work.length
-          || merged.photos.length!==theirs.photos.length
-          || (merged.notes||'')!==(theirs.notes||'')) dirty.add(merged.id);
-        state.rooms[state.rooms.indexOf(mine)]=merged;
+      if(!mine){
+        /* The same room number created separately on two phones: fold them
+           into whichever id sorts first, so every phone settles on one. */
+        const twin=state.rooms.find(x=>x.id!==id && nkey(x.number)&&nkey(x.number)===nkey(theirs.number));
+        if(twin){
+          const keep = twin.id<id ? twin : adopt(theirs);
+          const drop = twin.id<id ? adopt(theirs) : twin;
+          const {room:combined}=mergeRooms(keep,drop);
+          combined.rev=keep.rev||0; combined.syncBase=keep.syncBase;
+          state.rooms=state.rooms.filter(x=>x.id!==twin.id);
+          state.rooms.push(combined);
+          markDeleted(drop.id);
+          try{ await api('room',{id:drop.id,method:'DELETE'}); }catch(e){}
+          gone.add(drop.id);
+        } else state.rooms.push(adopt(theirs));
+        pulled++;
+      } else if(!isDirty(mine)){
+        state.rooms[state.rooms.indexOf(mine)]=adopt(theirs,mine);   // nothing local — take theirs
+        pulled++;
+      } else {
+        state.rooms[state.rooms.indexOf(mine)]=threeWay(mine,theirs);  // both changed — merge, then push
         pulled++;
       }
     }
 
-    /* push ours that the server has not got, or that we changed since */
-    for(const r of state.rooms){
+    /* push: anything changed here since its last sync */
+    for(const r of [...state.rooms]){
       if(gone.has(r.id)) continue;
-      const info=(data.rooms||{})[r.id];
-      if(!dirty.has(r.id) && info
-         && (info.updated||0)>=(r.updated||0) && (info.rev||0)>=(r.rev||0)) continue;
-      if(await pushRoom(r)) pushed++;
+      if(!isDirty(r) && (data.rooms||{})[r.id]) continue;
+      if(await pushRoom(state.rooms.find(x=>x.id===r.id)||r)) pushed++;
     }
 
     /* photos: upload ours, fetch theirs */
@@ -1947,13 +2022,11 @@ async function syncNow(quiet){
     }
 
     state.rooms.sort((a,b)=>String(a.number).localeCompare(String(b.number),undefined,{numeric:true}));
-    const present=new Set((await idbAll('photos')).map(p=>p.id));
-    state.rooms.forEach(r=>{ r.photos=r.photos.filter(id=>present.has(id)); });
     await supersede(); deleteIntent=Date.now(); await writeState();
     syncState.last=Date.now(); syncState.rooms=state.rooms.length;
     if(!quiet) toast(`Synced · ${pulled} in, ${pushed} out${upPhotos||downPhotos?` · ${upPhotos}↑ ${downPhotos}↓ photos`:''}`);
     else if(downPhotos||upPhotos) toast(`Photos synced · ${downPhotos} received, ${upPhotos} sent`);
-    refresh();
+    if(pulled||downPhotos) safeRefresh();
   }catch(e){
     syncState.err=String(e&&e.message||e);
     if(!quiet) toast('Sync failed — working offline. '+syncState.err);
@@ -1961,6 +2034,26 @@ async function syncNow(quiet){
   syncState.busy=false; syncState.phase=''; renderSyncChip();
 }
 
+/* Redraw after a sync without yanking the cursor out of a box someone is typing in. */
+let pendingRender=false;
+function safeRefresh(){
+  const a=document.activeElement;
+  const typing=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT');
+  const sheetOpen=document.getElementById('sheet').classList.contains('on');
+  if(typing||sheetOpen){ pendingRender=true; return; }
+  pendingRender=false; refresh();
+}
+let autoSyncTimer=null;
+function startAutoSync(){
+  if(autoSyncTimer) return;
+  autoSyncTimer=setInterval(()=>{
+    if(document.visibilityState==='visible' && loadOK && !syncState.busy) syncNow(true);
+    if(pendingRender) safeRefresh();
+  },20000);
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&loadOK) syncNow(true); });
+  window.addEventListener('online',()=>{ if(loadOK) syncNow(true); });
+  window.addEventListener('focus',()=>{ if(loadOK) syncNow(true); });
+}
 function renderSyncChip(){
   const el=document.getElementById('syncBtn');
   if(!el) return;
@@ -3515,6 +3608,7 @@ document.addEventListener('input',e=>{
   }catch(e){}
   showBoard();
   syncNow(true);
+  startAutoSync();
   try{
     const orphans=(await idbAll('photos')).length;
     const linked=state.rooms.reduce((n,r)=>n+r.photos.length,0);
