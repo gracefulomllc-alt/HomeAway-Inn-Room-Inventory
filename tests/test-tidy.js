@@ -36,7 +36,7 @@ const T=suite();
   const r2=a.state.rooms[1].id;
   a.ev(`room('${r2}').photos=['x1','x2','x3']`);
   a.ev('showBoard()'); await settle();
-  const tiles=a.els.board.innerHTML.split('class="tile').slice(1);
+  const tiles=a.els.board.innerHTML.split('class="tile b-').slice(1);
   T.ok(/Needs photos/.test(tiles[0])&&!/📷/.test(tiles[0])&&!/photo/.test(tiles[0].split('class="meta"')[1]),'a room with no photos says Needs photos and shows no camera');
   T.ok(!/Needs photos/.test(tiles[1])&&/3 photos/.test(tiles[1]),'a room with photos shows the count, no flag');
   T.done();

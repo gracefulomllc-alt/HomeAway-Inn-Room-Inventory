@@ -9,3 +9,4 @@ for f in test-*.js; do
   printf "%-20s %s\n" "$f" "$last"
 done
 echo "-----"; echo "suites failing: $bad   tests passing: $total"
+[ "$bad" -eq 0 ]
