@@ -524,7 +524,7 @@ const ROOM_TYPES = ['Superior Double','Superior Single','Economy Double','Econom
    list counts — leave that empty and it's simply never flagged. */
 const NON_GUEST = ['Storage room'];
 const isGuestRoom = t => !NON_GUEST.includes(t);
-const MAX_PHOTOS = 10;
+const MAX_PHOTOS = 40;
 
 const CATALOG = {
   'Beds & linens':['Queen bed','King bed','Twin bed','Mattress','Box spring','Headboard','Pillows','Comforter','Blanket','Mattress protector'],
@@ -1073,13 +1073,26 @@ async function makePhotoRecord(file,roomId){
   }catch(e){ return null; }
   finally{ if(src&&src.close) src.close(); }
 }
-function pickImage(camera,onFile){
+/* The picker lives in the page while the camera is open. A detached input can
+   be thrown away by iPhone Safari while the camera app is up, and then the
+   photo never arrives — it typically worked once and then silently failed. */
+function openPicker(camera,multiple,onFiles){
+  const old=document.getElementById('photoPicker');
+  if(old&&old.remove) old.remove();
   const inp=document.createElement('input');
-  inp.type='file'; inp.accept='image/*';
+  inp.type='file'; inp.accept='image/*'; inp.multiple=!!multiple; inp.id='photoPicker';
   if(camera) inp.setAttribute('capture','environment');
-  inp.onchange=()=>{ if(inp.files&&inp.files[0]) onFile(inp.files[0]); };
+  if(inp.style) inp.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;opacity:0';
+  if(document.body&&document.body.appendChild) document.body.appendChild(inp);
+  inp.onchange=()=>{
+    const files=inp.files?[...inp.files]:[];
+    inp.value='';
+    if(inp.remove) inp.remove();
+    if(files.length) onFiles(files);
+  };
   inp.click();
 }
+function pickImage(camera,onFile){ openPicker(camera,false,f=>onFile(f[0])); }
 /* Fill in any job thumbnails on screen once the page is drawn. */
 function hydrateThumbs(){
   if(!document.querySelectorAll) return;
@@ -1115,7 +1128,7 @@ async function addPhotos(roomId,files){
   }
   r.updated=Date.now(); save(); renderRoom();
   if(quota) toast('Storage is full — save a backup, then remove some photos');
-  else if(added) toast(`${added} photo${added>1?'s':''} added${skipped?` · ${skipped} skipped`:''}`);
+  else if(added) toast(`${added} photo${added>1?'s':''} added${skipped?` · ${skipped} skipped`:''} — tap Take photo for another`);
   else if(decodeFail) toast("Couldn't read that photo — try shooting it again");
   else toast(`Limit is ${MAX_PHOTOS} photos per room`);
 }
@@ -3227,11 +3240,9 @@ document.addEventListener('click', async e=>{
   if(rs){ r.status=rs.dataset.roomstatus; r.updated=Date.now(); save(); refresh(); return; }
 
   if(id==='camBtn'||id==='libBtn'){
-    const inp=document.createElement('input');
-    inp.type='file'; inp.accept='image/*'; inp.multiple=(id==='libBtn');
-    if(id==='camBtn') inp.setAttribute('capture','environment');
-    inp.onchange=()=>inp.files.length&&addPhotos(r.id,[...inp.files]);
-    inp.click(); return;
+    const rid=r.id;
+    openPicker(id==='camBtn', id==='libBtn', files=>addPhotos(rid,files));
+    return;
   }
   const ep=t.closest('[data-editphoto]');
   if(ep) return sheetPhoto(ep.dataset.editphoto);
