@@ -158,6 +158,14 @@ textarea{min-height:70px;resize:vertical}
 .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:7px}
 .ph{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:#e9e8e3}
 .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.phwrap{display:flex;flex-direction:column;gap:3px;min-width:0}
+button.ph{padding:0;cursor:pointer;width:100%}
+.ph .phedit{position:absolute;right:4px;bottom:4px;background:rgba(10,15,20,.72);color:#fff;
+  font-size:11px;font-weight:700;border-radius:5px;padding:2px 7px}
+.phnote{font-size:11px;color:var(--muted);line-height:1.25;word-break:break-word}
+.phbig{background:#eceae4;border-radius:10px;overflow:hidden;text-align:center}
+.phbig img{max-width:100%;max-height:42vh;display:block;margin:0 auto;cursor:zoom-in}
+#reportRoot figcaption{font-size:11px;color:#3c4148;margin-top:3px}
 .ph .x{
   position:absolute;top:3px;right:3px;background:rgba(10,15,20,.72);color:#fff;border:0;
   width:26px;height:26px;border-radius:6px;font-size:15px;line-height:1;cursor:pointer;
@@ -525,7 +533,7 @@ const CATALOG = {
    and edited by the user in Menu → Room standard. */
 const DEFAULT_STANDARD = ['Bed','Microwave','Chair','Trash can','Fridge','TV','TV remote',
   'Informational folder','Soap holder','Towel holder','Toilet paper holder','Bath mat',
-  'Clean curtains','Working lights','Working AC','Desk x2','Nightstand','Lamp','Alarm clock',
+  'Clean curtains','Working lights','Working AC','Working heat','Desk x2','Nightstand','Lamp','Alarm clock',
   'Smoke detector'];
 
 const WORK_PRESETS = ['Deep clean','Paint touch-up','Replace carpet','Fix plumbing leak','Replace light bulbs','Repair drywall','Replace door lock','Service AC unit','Replace linens','Caulk tub','Replace TV remote','Repair furniture'];
@@ -755,6 +763,19 @@ const isDeleted = id => !!normalizeDeleted()[id];
 function markDeleted(id){ normalizeDeleted()[id]=Date.now(); }
 
 /* --- room standard: the minimum every room is supposed to have --- */
+/* One-time: standards saved before heat was added get it beside the AC.
+   Recorded so that removing it later in Menu → Room standard sticks. */
+function migrateStandard(){
+  if(state.heatAdded) return;
+  state.heatAdded=true;
+  normalizeStandard();
+  const list=state.standard.all;
+  if(!list.length || list.some(x=>nkey(parseStdLine(x).name)==='working heat')) return;
+  const ac=list.findIndex(x=>nkey(parseStdLine(x).name)==='working ac');
+  list.splice(ac>=0?ac+1:list.length,0,'Working heat');
+  state.standardUpdated=Date.now();
+  save();
+}
 function normalizeStandard(){
   if(!state.standard||typeof state.standard!=='object') state.standard={all:[],byType:{}};
   if(!Array.isArray(state.standard.all)) state.standard.all=[];
@@ -964,6 +985,8 @@ function normalizeRoom(r){
   ['type','floor','notes','upgradeTo','upgradeNote'].forEach(k=>{ if(typeof r[k]!=='string') r[k]=''; });
   if(!STATUSES.some(s=>s.k===r.status)) r.status='notdone';
   if(!Array.isArray(r.photos)) r.photos=[];
+  if(!r.photoNotes||typeof r.photoNotes!=='object'||Array.isArray(r.photoNotes)) r.photoNotes={};
+  Object.keys(r.photoNotes).forEach(k=>{ if(typeof r.photoNotes[k]!=='string'||!r.photoNotes[k].trim()) delete r.photoNotes[k]; });
   if(!Array.isArray(r.inventory)) r.inventory=[]; else r.inventory.forEach(i=>{
     i.id=i.id||uid(); i.name=String(i.name||'Unnamed item');
     i.qty=Number.isFinite(+i.qty)?+i.qty:1;
@@ -1097,9 +1120,55 @@ async function thumbURL(id){
   const p=await idbGet('photos',id); if(!p) return '';
   const u=URL.createObjectURL(p.thumb); thumbURLs.set(id,u); return u;
 }
+/* Edit one room photo: note, order, replace, delete. */
+function sheetPhoto(pid){
+  const r=room(currentRoomId); if(!r) return;
+  const i=r.photos.indexOf(pid); if(i<0) return;
+  openSheet(`
+    <h3>Photo ${i+1} of ${r.photos.length}</h3>
+    <div class="phbig"><img id="phBigImg" alt="" data-view="${esc(pid)}"></div>
+    <label class="f" style="margin-top:12px"><span>Note</span>
+      <input type="text" id="phNote" value="${esc(notesOf(r)[pid]||'')}" placeholder="e.g. Stain by the window, cracked tile" autocomplete="off">
+    </label>
+    <div class="btnrow">
+      <button class="btn primary" data-phsave="${esc(pid)}">Save note</button>
+      <button class="btn" data-view="${esc(pid)}">Full size</button>
+    </div>
+    <div class="btnrow" style="margin-top:8px">
+      <button class="btn sm" data-phmove="${esc(pid)}" data-dir="-1" ${i===0?'disabled':''}>‹ Move earlier</button>
+      <button class="btn sm" data-phmove="${esc(pid)}" data-dir="1" ${i===r.photos.length-1?'disabled':''}>Move later ›</button>
+    </div>
+    <div class="btnrow" style="margin-top:8px">
+      <button class="btn sm" data-phreplace="${esc(pid)}" data-src="cam">📷 Retake</button>
+      <button class="btn sm" data-phreplace="${esc(pid)}" data-src="lib">Replace from library</button>
+      <button class="btn sm danger" data-phdel="${esc(pid)}">Delete photo</button>
+    </div>
+    <div class="btnrow" style="margin-top:12px"><button class="btn full" data-close>Done</button></div>
+  `);
+  thumbURL(pid).then(u=>{ const im=document.getElementById('phBigImg'); if(im&&u) im.src=u; });
+}
+async function replacePhoto(roomId,oldId,file){
+  const r=room(roomId); if(!r) return;
+  const i=r.photos.indexOf(oldId); if(i<0) return;
+  toast('Saving photo…');
+  const rec=await makePhotoRecord(file,roomId);
+  if(!rec){ toast("Couldn't read that photo — try again"); return; }
+  try{ await idbPut('photos',rec); }catch(e){ toast('Photo could not be saved'); return; }
+  r.photos[i]=rec.id;
+  const nt=notesOf(r); if(nt[oldId]){ nt[rec.id]=nt[oldId]; delete nt[oldId]; }
+  await idbDel('photos',oldId).catch(()=>{});
+  if(thumbURLs.has(oldId)){ URL.revokeObjectURL(thumbURLs.get(oldId)); thumbURLs.delete(oldId); }
+  r.updated=Date.now(); save(); toast('Photo replaced');
+  renderRoom(); sheetPhoto(rec.id);
+}
+function notesOf(r){
+  if(!r.photoNotes||typeof r.photoNotes!=='object'||Array.isArray(r.photoNotes)) r.photoNotes={};
+  return r.photoNotes;
+}
 async function removePhoto(roomId,photoId){
   const r=room(roomId); if(!r) return;
   r.photos=r.photos.filter(p=>p!==photoId);
+  delete notesOf(r)[photoId];
   await idbDel('photos',photoId);
   if(thumbURLs.has(photoId)){URL.revokeObjectURL(thumbURLs.get(photoId));thumbURLs.delete(photoId)}
   r.updated=Date.now(); save(); renderRoom();
@@ -1421,7 +1490,9 @@ function renderRoom(){
     for(const pid of r.photos) urls.push([pid,await thumbURL(pid)]);
     if(token!==renderToken) return;          // a newer render started — drop this one
     pg.innerHTML=urls.map(([pid,u])=>u
-      ? `<div class="ph"><img src="${u}" alt="Photo of room ${esc(r.number)}" data-view="${pid}"><button class="x" data-delphoto="${pid}" aria-label="Delete photo">×</button></div>`
+      ? `<div class="phwrap"><button class="ph" data-editphoto="${pid}" aria-label="Edit photo">
+           <img src="${u}" alt="Photo of room ${esc(r.number)}"><span class="phedit">Edit</span></button>
+           ${notesOf(r)[pid]?`<div class="phnote">${esc(notesOf(r)[pid])}</div>`:''}</div>`
       : '').join('');
   })();
 }
@@ -2330,7 +2401,7 @@ async function exportReport(scope,photoMode,newPage){
         const p=await idbGet('photos',pid);
         if(!p||!p.full||!p.full.size) continue;
         const u=URL.createObjectURL(p.full); reportURLs.push(u);
-        imgs+=`<figure><img src="${u}" alt="Room ${esc(r.number)}" loading="eager"></figure>`; shown++;
+        imgs+=`<figure><img src="${u}" alt="Room ${esc(r.number)}" loading="eager">${notesOf(r)[pid]?`<figcaption>${esc(notesOf(r)[pid])}</figcaption>`:''}</figure>`; shown++;
         if(++shot%30===0){ toast(`Loading photos… ${shot}`); await new Promise(x=>setTimeout(x,0)); }
       }
     }
@@ -2583,6 +2654,7 @@ function mergeRooms(cur,inc){
 
   const seen=new Set(out.photos);
   (inc.photos||[]).forEach(p=>{ if(!seen.has(p)){ out.photos.push(p); seen.add(p); gains.photos++; } });
+  out.photoNotes={...(inc.photoNotes||{}),...notesOf(out)};
 
   ['type','floor','upgradeTo'].forEach(f=>{ if(!out[f] && inc[f]) out[f]=inc[f]; });
   [['notes','notes'],['upgradeNote','upgradeNote']].forEach(([f])=>{
@@ -3036,10 +3108,34 @@ document.addEventListener('click', async e=>{
     inp.onchange=()=>inp.files.length&&addPhotos(r.id,[...inp.files]);
     inp.click(); return;
   }
-  const del=t.closest('[data-delphoto]');
-  if(del) return removePhoto(r.id,del.dataset.delphoto);
+  const ep=t.closest('[data-editphoto]');
+  if(ep) return sheetPhoto(ep.dataset.editphoto);
+  const ps=t.closest('[data-phsave]');
+  if(ps){
+    const v=((document.getElementById('phNote')||{}).value||'').replace(/\s+/g,' ').trim();
+    if(v) notesOf(r)[ps.dataset.phsave]=v; else delete notesOf(r)[ps.dataset.phsave];
+    r.updated=Date.now(); save(); closeSheet(); renderRoom(); toast(v?'Note saved':'Note removed');
+    return;
+  }
+  const phm=t.closest('[data-phmove]');
+  if(phm){
+    const pid=phm.dataset.phmove, i=r.photos.indexOf(pid), j=i+(+phm.dataset.dir);
+    if(i<0||j<0||j>=r.photos.length) return;
+    [r.photos[i],r.photos[j]]=[r.photos[j],r.photos[i]];
+    r.updated=Date.now(); save(); renderRoom(); sheetPhoto(pid);
+    return;
+  }
+  const pr=t.closest('[data-phreplace]');
+  if(pr){ const rid=r.id, pid=pr.dataset.phreplace;
+    pickImage(pr.dataset.src==='cam', file=>replacePhoto(rid,pid,file)); return; }
+  const pd=t.closest('[data-phdel]');
+  if(pd){
+    if(!confirm('Delete this photo? Menu → Recover can bring it back.')) return;
+    closeSheet(); return removePhoto(r.id,pd.dataset.phdel);
+  }
   const view=t.closest('[data-view]');
   if(view){
+    closeSheet();
     const p=await idbGet('photos',view.dataset.view);
     if(p){ document.getElementById('lbImg').src=URL.createObjectURL(p.full); document.getElementById('lightbox').classList.add('on'); }
     return;
@@ -3445,6 +3541,7 @@ document.addEventListener('input',e=>{
   }
 
   if(!state.stdSeeded && !standardIsSet()){ state.standard.all=[...DEFAULT_STANDARD]; state.stdSeeded=true; save(); }
+  migrateStandard();
   await snapshot('startup');
   try{
     const q=new URLSearchParams(location.search||'');
