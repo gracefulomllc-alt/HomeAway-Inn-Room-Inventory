@@ -277,6 +277,7 @@ table.tot td.ok{color:var(--complete)}
 .legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
 .legend span{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
 .tilesyms{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.tilesyms .s.nophoto{background:#fbf4e3;color:#7d5a06;border:1px solid #e5cf9a;font-family:var(--sans)}
 .tilesyms .s{
   display:inline-flex;align-items:center;gap:2px;font-size:10.5px;font-weight:700;
   padding:1px 5px;border-radius:5px;font-family:var(--mono);
@@ -1268,11 +1269,11 @@ function renderBoard(){
         ${tc.missing?`<span class="s t-miss">✕${tc.missing}</span>`:''}
         ${tc.short?`<span class="s t-short">!${tc.short}</span>`:''}
         ${tc.job?`<span class="s t-job">⚙${tc.job}</span>`:''}
-        ${tc.photo?`<span class="s t-photo">◎</span>`:''}
+        ${tc.photo?`<span class="s t-photo nophoto">Needs photos</span>`:''}
         ${!tc.missing&&!tc.short&&!tc.job&&!tc.photo&&!tc.status?`<span class="s" style="background:#eaf5f0;color:#155e46">✓ done</span>`:''}
       </div>
       </div>
-      <div class="meta"><span class="dot s-${r.status}"></span>${r.inventory.length} items · ${r.photos.length}📷</div>
+      <div class="meta"><span class="dot s-${r.status}"></span>${r.inventory.length} items${r.photos.length?` · ${r.photos.length} photo${r.photos.length===1?'':'s'}`:''}</div>
     </button>`;
   }).join('');
 
