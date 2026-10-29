@@ -1943,7 +1943,7 @@ async function pushRoom(r){
   return false;
 }
 
-async function syncNow(quiet){
+async function syncNow(quiet,force){
   if(!syncState.on||syncState.busy) return;
   syncState.busy=true; syncState.err=''; renderSyncChip();
   let pulled=0, pushed=0, upPhotos=0, downPhotos=0;
@@ -1974,7 +1974,10 @@ async function syncNow(quiet){
     for(const [id,info] of Object.entries(data.rooms||{})){
       if(gone.has(id)) continue;
       const mine=state.rooms.find(x=>x.id===id);
-      if(mine && (mine.rev||0)>=(info.rev||0)) continue;
+      /* Skip only when this phone provably has the server's exact copy. A rev
+         alone isn't proof: a restored backup can carry a rev from another
+         history, which used to hide newer team work from this phone forever. */
+      if(!force && mine && (mine.rev||0)===(info.rev||0) && (mine.updated||0)===(info.updated||0)) continue;
       const got=await api('room',{id});
       if(got.status!==200||!got.data.room) continue;
       const theirs=normalizeRoom(got.data.room);
@@ -2060,6 +2063,15 @@ async function syncNow(quiet){
     if(!quiet) toast('Sync failed — working offline. '+syncState.err);
   }
   syncState.busy=false; syncState.phase=''; renderSyncChip();
+}
+
+/* One tap: pull every room and every missing photo again, whatever this
+   phone thinks it already has. Local changes are merged, never thrown away. */
+async function refreshFromTeam(){
+  for(let i=0;i<50&&syncState.busy;i++) await new Promise(r=>setTimeout(r,200));
+  toast('Getting latest from team…');
+  await syncNow(false,true);
+  refresh();
 }
 
 /* Redraw after a sync without yanking the cursor out of a box someone is typing in. */
@@ -2359,6 +2371,7 @@ function sheetMenu(){
     </div>
     <p class="hint" style="margin:0 0 6px"><strong>Your data</strong></p>
     <div class="btnrow">
+      <button class="btn primary full" id="getLatest">Get latest from team</button>
       <button class="btn full" id="expBackup">Save backup file</button>
       <button class="btn full" id="storageInfo">Check storage space</button>
       <button class="btn full" id="recover">Recover earlier version</button>
@@ -2366,7 +2379,7 @@ function sheetMenu(){
       <button class="btn full" id="impBackup">Restore from backup (replaces everything)</button>
       <button class="btn full" id="setProp">Rename property</button>
     </div>
-    <p class="hint">Everything lives on this phone only. Save a backup before clearing browser data or switching devices.</p>
+    <p class="hint">Every phone with the link shares the same rooms and photos — changes arrive on their own within about 20 seconds. Restore is only for old backup files.</p>
     <div class="btnrow" style="margin-top:14px"><button class="btn full" data-close>Close</button></div>
   `);
 }
@@ -2859,15 +2872,14 @@ async function applyMerge(){
 
   plan.merge.forEach(m=>{
     const i=state.rooms.findIndex(x=>x.id===m.cur.id);
-    m.room.photos=m.room.photos.filter(id=>present.has(id));
+    delete m.room.syncBase;                       // merged rooms go back up to the team
     if(i>=0) state.rooms[i]=m.room;
   });
   plan.add.forEach(inc=>{
-    inc.photos=inc.photos.filter(id=>present.has(id));
+    delete inc.syncBase;
     inc.savedAt=0;
     state.rooms.push(inc);
   });
-  state.rooms.forEach(r=>{ r.photos=r.photos.filter(id=>present.has(id)); });
 
   normalizeStandard();
   const incStd=(data.state.standard&&Array.isArray(data.state.standard.all))?data.state.standard.all:[];
@@ -2954,9 +2966,10 @@ async function applyRestore(){
     let kept=0, dropped=0;
     state.rooms=state.rooms.filter(r=>r&&typeof r==='object').map(r=>{
       normalizeRoom(r);
-      const b=r.photos.length;
-      r.photos=r.photos.filter(pid=>present.has(pid));
-      kept+=r.photos.length; dropped+=b-r.photos.length;
+      delete r.syncBase;          // restored rooms go back up to the team; links to photos
+                                  // still on the server are kept and download on the next sync
+      const here=r.photos.filter(pid=>present.has(pid)).length;
+      kept+=here; dropped+=r.photos.length-here;
       return r;
     });
     await supersede();
@@ -2973,7 +2986,7 @@ async function applyRestore(){
     if(landed!==want){
       alert(`Only ${landed} of ${want} rooms reached storage.\n\nDo not close the app — save a backup file from the menu now.`);
     } else {
-      alert(`Loaded ${landed} rooms and ${kept} photos.${dropped?`\n\n${dropped} photos belonging to these rooms are not on this phone.`:''}`);
+      alert(`Loaded ${landed} rooms and ${kept} photos.${dropped?`\n\n${dropped} more photos will download from the team.`:''}`);
     }
   }catch(e){
     pendingRestore=null;
@@ -3055,6 +3068,7 @@ document.addEventListener('click', async e=>{
     closeSheet(); renderBoard(); return;
   }
   if(id==='syncBtn') return syncNow(false);
+  if(id==='getLatest'){ closeSheet(); return refreshFromTeam(); }
   if(id==='hmBtn') return showHandyman();
   if(id==='todoBtn'){ if(todoTab==='handyman') todoTab='room'; return showTodo(); }
   if(t.closest('[data-hmnew]')){ clearPendingJobPhoto(); return sheetHmAdd(); }
