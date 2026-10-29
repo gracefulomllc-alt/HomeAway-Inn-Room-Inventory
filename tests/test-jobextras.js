@@ -32,7 +32,7 @@ function makeServer(){
   const sheet=a.els.sheetBody.innerHTML;
   T.ok(/id="hmFix"/.test(sheet),'the add sheet has a common-fixes dropdown');
   const opts=(sheet.match(/<select id="hmFix">[\s\S]*?<\/select>/)||[''])[0].match(/<option/g)||[];
-  T.ok(opts.length-1===16,'a short general list — 16 choices');
+  T.ok(opts.length-1===17,'a short general list — 17 choices');
   T.ok(!/optgroup/.test(sheet),'one flat list, no sub-groups');
   T.ok(/Leak or plumbing/.test(sheet)&&/AC or heat/.test(sheet)&&/Door or lock/.test(sheet),'general terms rather than specific faults');
   const sel=a.sb.document.getElementById('hmFix'); sel.id='hmFix'; sel.value='Leak or plumbing';

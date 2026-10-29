@@ -120,14 +120,10 @@ function makeServer(){
 
   T.section('easy to find');
   a.ev('showBoard()'); await settle();
-  T.ok(/Handyman list/.test(a.els.hmBanner.innerHTML),'a Handyman banner sits at the top of the board');
-  T.ok(/open job/.test(a.els.hmBanner.innerHTML),'showing how many jobs are open');
+  T.ok(!a.sb.document.getElementById('hmBanner').innerHTML,'no duplicate banner on the board — one entry point');
   T.ok(Number(a.els.hmBadge.textContent)>0,'the top-bar button carries a count');
   await a.click(btn({},'hmBtn'));
   T.ok(a.ev('todoTab')==='handyman'&&/Handyman/.test(a.els.title.innerHTML),'the top-bar button opens his list');
-  a.ev('showBoard()'); await settle();
-  await a.click(btn({openhm:'1'}));
-  T.ok(a.ev('todoTab')==='handyman','so does the banner');
   await a.click(btn({},'todoBtn'));
   T.ok(a.ev('todoTab')!=='handyman','the To-do button still goes to the general list');
 
